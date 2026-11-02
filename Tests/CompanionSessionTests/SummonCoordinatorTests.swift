@@ -134,6 +134,21 @@ private func slowProvider() -> FakeLLMProvider {
         #expect(h.vm.thread.map(\.markdown) == ["q", "Hel"])
     }
 
+    @Test func summonWhileHiddenSettlesALiveRun() async {
+        let h = Harness(providers: FakeProviders(fallback: slowProvider()))
+        h.coordinator.summon()
+        h.coordinator.bubbleDidSubmit("q")
+        await waitUntil { h.vm.thread.last?.markdown == "Hel" }
+        h.presenter.vanishWithoutClose()
+        h.coordinator.summon()
+        #expect(h.vm.isBusy == false)
+        #expect(h.vm.thread.map(\.markdown) == ["q", "Hel"])
+        #expect(h.coordinator.conversation.turns.map(\.answer) == ["Hel"])
+        await h.coordinator.settle()
+        #expect(h.vm.thread.map(\.markdown) == ["q", "Hel"])
+        #expect(h.coordinator.conversation.turns.map(\.answer) == ["Hel"])
+    }
+
     @Test func overloadedOffersModelSwitchAndRetries() async {
         let h = Harness(providers: FakeProviders([ModelCatalog.haiku45.modelID: FakeLLMProvider(failure: LLMError.http(status: 529, message: "Overloaded"))]))
         h.coordinator.summon()

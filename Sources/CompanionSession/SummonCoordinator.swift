@@ -198,6 +198,10 @@ import Foundation
 
     /// Summon steps 2–3: cheap in-memory resets, then show.
     private func beginPresentation(avoiding: CGRect?) {
+        // Hidden must mean idle: the presenter can go hidden without a close (a miniaturized pop-out).
+        cancelRun(keepPartial: true)
+        cancelGather()
+        startupTask?.cancel()
         trace.begin()
         let resumed = conversation.beginSummon()
         viewModel.resetThread(resumed ? conversation.turns.flatMap { turn in

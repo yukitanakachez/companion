@@ -19,6 +19,8 @@ import Testing
         isVisible = true
     }
     func focusInput() { focusCount += 1 }
+    /// A presenter can stop being visible without a close, e.g. a miniaturized pop-out.
+    func vanishWithoutClose() { isVisible = false }
     func hide() {
         hideCount += 1
         isVisible = false

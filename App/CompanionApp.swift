@@ -19,6 +19,7 @@ struct CompanionApp: App {
         let alert = NSAlert()
         alert.messageText = "Latency Report"
         alert.informativeText = delegate.environment?.trace.summaryText ?? ""
+        NSApp.activate()   // a modal behind the front app would block the main thread unseen
         alert.runModal()
     }
 }
