@@ -13,3 +13,8 @@ final class CountingReader: PrintedNumberReading, @unchecked Sendable {
         return []
     }
 }
+
+/// A unique directory path under the system temporary directory; not created.
+func temporaryDirectory() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("PageFinderTests-\(UUID().uuidString)")
+}
