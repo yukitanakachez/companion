@@ -16,16 +16,31 @@ extension WindowTests { @MainActor @Suite struct BubbleControllerTests {
         #expect(p.collectionBehavior.isSuperset(of: [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]))
         #expect(!p.hidesOnDeactivate && p.canBecomeKey && !p.becomesKeyOnlyIfNeeded && p.animationBehavior == .none && !p.isReleasedWhenClosed)
     }
+    // Spec 5.1: capture and AX read the front app right after a summon, so it must stay frontmost.
+    // NSApp.isActive can't check that: it goes true when this panel becomes key and false when it
+    // hides, while NSRunningApplication.current.isActive and the frontmost app don't change, bundled
+    // or not. Only "not us" is asserted, because a person can switch apps during the test.
     @Test func showIsFastFocusesInputAndDoesNotActivate() {
         defer { c.hide() }
-        let wasActive = NSApp.isActive
         let t = ContinuousClock().measure { c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil) }
         #expect(t < .milliseconds(50)); #expect(c.isVisible)
         withKnownIssue("macOS grants no key window to anyone while the screen is locked", isIntermittent: true) {
             #expect(c.panel.isKeyWindow)
         } when: { TestApp.screenIsLocked }
-        #expect(c.panel.firstResponder === c.input); #expect(NSApp.isActive == wasActive)
+        #expect(c.panel.firstResponder === c.input)
         #expect(c.panel.frame.width == 380 && screen.contains(c.panel.frame))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))   // activation is asynchronous; long enough to see one land
+        #expect(NSWorkspace.shared.frontmostApplication != NSRunningApplication.current)
+        #expect(!NSRunningApplication.current.isActive)
+    }
+    // windowNumber 0 leaves routing to NSApp, which sends the key to whichever window is key.
+    @Test func keysRoutedByTheAppReachTheInput() {
+        defer { c.hide() }
+        c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil)
+        NSApp.sendEvent(keyEvent(12, "q"))
+        withKnownIssue("macOS grants no key window to anyone while the screen is locked", isIntermittent: true) {
+            #expect(c.input.string == "q" && vm.inputText == "q")
+        } when: { TestApp.screenIsLocked }
     }
     @Test func commandKeysAreHandledBeforeTheMainMenu() {
         defer { c.hide() }
