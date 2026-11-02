@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Companion Bridge",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["tabs", "storage", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "options_page": "options.html",
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "exclude_matches": ["https://www.youtube.com/*", "https://drive.google.com/*"],
+      "js": ["content-page.js"], "run_at": "document_idle" },
+    { "matches": ["https://www.youtube.com/*"], "js": ["content-youtube.js"], "run_at": "document_idle" },
+    { "matches": ["https://www.youtube.com/*"], "js": ["content-youtube-main.js"], "run_at": "document_idle", "world": "MAIN" },
+    { "matches": ["https://classroom.google.com/*"], "js": ["content-classroom.js"], "run_at": "document_idle" },
+    { "matches": ["https://drive.google.com/*"], "js": ["content-drive.js"], "run_at": "document_idle", "all_frames": true }
+  ]
+}
