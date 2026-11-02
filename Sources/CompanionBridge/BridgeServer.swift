@@ -17,6 +17,7 @@ public actor BridgeServer {
     private var listener: NWListener?
     private var port: UInt16?
     private var accepting = false
+    private var pingTask: Task<Void, Never>?
     private var nextConnection: UInt64 = 0
     private var sessions: [ConnectionID: BridgeSession] = [:]
     private var authenticated: [Authenticated] = []
@@ -50,6 +51,7 @@ public actor BridgeServer {
             }
             listener = bound.listener
             port = bound.port
+            startPinging()
             return bound.port
         } catch {
             accepting = false
@@ -59,6 +61,8 @@ public actor BridgeServer {
 
     public func stop() async {
         accepting = false
+        pingTask?.cancel()
+        pingTask = nil
         listener?.cancel()
         listener = nil
         port = nil
@@ -70,6 +74,16 @@ public actor BridgeServer {
             await session.close(code: .protocolCode(.goingAway))
             await cache.connectionClosed(id)
         }
+    }
+
+    public func updateBlocklist(_ config: BlocklistConfig) async {
+        blocklist = config
+        for session in authenticated { session.session.enqueue(.config(blocklist: config)) }
+    }
+
+    /// Connected browsers are listed in authentication order.
+    public func status() async -> BridgeStatus {
+        BridgeStatus(port: port, connectedBrowsers: authenticated.map(\.hello.browserName))
     }
 
     /// The active browser if it is authenticated, else the most recently authenticated session.
@@ -89,6 +103,19 @@ public actor BridgeServer {
 
     func hasAuthenticatedSession(_ connection: ConnectionID) -> Bool {
         authenticated.contains { $0.id == connection }
+    }
+
+    private func startPinging() {
+        let interval = timings.pingInterval
+        pingTask = Task { [weak self] in
+            while (try? await Task.sleep(for: interval)) != nil {
+                await self?.pingAuthenticatedSessions()
+            }
+        }
+    }
+
+    private func pingAuthenticatedSessions() {
+        for session in authenticated { session.session.enqueue(.ping) }
     }
 
     private func accept(_ connection: NWConnection) async {
