@@ -23,7 +23,10 @@ public enum PageReferenceParser {
     private static let reference: NSRegularExpression = {
         let item = "\(number)(?:\(rangeTail)\(number)|\(wordTail)\(number))?"
         let separator = #"\s*(?:,\s*and|,|&|and)\s*"#
-        let keyword = #"(?<![\p{L}\p{N}])(?:pages|page|pgs|pg|pp|p)\.?\s*"#
+        // A bare "p" with no dot is usually a variable (p1 = 5, p2 + 3p), so it needs a page-sized number
+        // that isn't the start of an equation.
+        let barePage = #"p\s*(?=\d{3,4}(?![\p{L}\p{N}])(?!\s*[=+*/^<>]))"#
+        let keyword = #"(?<![\p{L}\p{N}])(?:(?:(?:pages|page|pgs|pg|pp)\.?|p\.)\s*|"# + barePage + ")"
         return try! NSRegularExpression(pattern: "\(keyword)\(item)(?:\(separator)\(item))*",
                                         options: [.caseInsensitive])
     }()

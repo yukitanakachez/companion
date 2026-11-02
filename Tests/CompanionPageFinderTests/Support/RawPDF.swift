@@ -3,7 +3,8 @@ import Foundation
 /// Hand-written PDF, because PDFKit can't write page labels.
 enum RawPDF {
     /// `nums` is the verbatim /Nums array, nil → no /PageLabels in the catalog.
-    static func make(pageCount: Int, nums: String?, printed: (Int) -> String? = { _ in nil }) -> Data {
+    static func make(pageCount: Int, nums: String?, printed: (Int) -> String? = { _ in nil },
+                     rotate: Int = 0, labelAt: (Int, Int) = (300, 40)) -> Data {
         var out = "%PDF-1.4\n"
         var offsets: [Int] = []
         func object(_ number: Int, _ body: String) {
@@ -18,10 +19,10 @@ enum RawPDF {
         object(2, "<< /Type /Pages /Kids [\(kids)] /Count \(pageCount) >>")
         object(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
         for index in 0..<pageCount {
-            object(4 + 2 * index, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            object(4 + 2 * index, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Rotate \(rotate) "
                 + "/Resources << /Font << /F1 3 0 R >> >> /Contents \(5 + 2 * index) 0 R >>")
             var content = "BT /F1 12 Tf 72 400 Td (Body text \(index)) Tj ET"
-            if let label = printed(index) { content += "\nBT /F1 14 Tf 300 40 Td (\(label)) Tj ET" }
+            if let label = printed(index) { content += "\nBT /F1 14 Tf \(labelAt.0) \(labelAt.1) Td (\(label)) Tj ET" }
             object(5 + 2 * index, "<< /Length \(content.utf8.count) >>\nstream\n\(content)\nendstream")
         }
 

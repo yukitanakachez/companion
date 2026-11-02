@@ -22,10 +22,14 @@ final class PageMapper {
     private lazy var ocrOffset = estimateOffset(
         samples: OffsetEstimator.sampleIndices(pageCount: document.pageCount, maxSamples: Self.ocrSamples),
         numbers: ocrNumbers)
-    /// Text recognition runs only when no sampled page has a text layer, so text PDFs never pay for it.
-    private lazy var isScanned = !textSampleIndices.contains { index in
-        document.page(at: index).map(PrintedNumbers.hasTextLayer) ?? false
-    }
+    /// Text recognition runs only when most sampled pages have no text layer, so text PDFs never pay for it,
+    /// while a text cover merged onto a scan doesn't switch it off.
+    private lazy var isScanned = {
+        let withText = textSampleIndices.filter { index in
+            document.page(at: index).map(PrintedNumbers.hasTextLayer) ?? false
+        }
+        return withText.count * 2 < textSampleIndices.count
+    }()
 
     private var textMemo: [Int: [Int]] = [:]
     private var ocrMemo: [Int: [Int]] = [:]
@@ -57,13 +61,44 @@ final class PageMapper {
     }
 
     private func fromText(_ target: Int) -> PageMatch? {
-        guard let textOffset else { return nil }
-        return OffsetEstimator.locate(target, offset: textOffset, pageCount: document.pageCount, numbersAt: textNumbers)
-            .map { PageMatch(printed: target, pdfIndex: $0, method: .printedNumbers) }
+        let pageCount = document.pageCount
+        if let textOffset, let index = OffsetEstimator.locate(target, offset: textOffset, pageCount: pageCount,
+                                                              numbersAt: textNumbers) {
+            return PageMatch(printed: target, pdfIndex: index, method: .printedNumbers)
+        }
+        for offset in sampledOffsets(nearest: target) {
+            if let index = OffsetEstimator.locate(target, offset: offset, pageCount: pageCount, numbersAt: textNumbers),
+               isPageNumber(target, at: index) {
+                return PageMatch(printed: target, pdfIndex: index, method: .printedNumbers)
+            }
+        }
+        return nil
+    }
+
+    /// Plate sections shift the numbering part-way through a book, so one offset can't reach every page. These are
+    /// the offsets seen at each sample, nearest the target first. Empty unless most samples are numbered, so a stray
+    /// number in an unnumbered book gets no say.
+    private func sampledOffsets(nearest target: Int) -> [Int] {
+        let numbered = textSampleIndices.filter { !textNumbers(at: $0).isEmpty }
+        guard numbered.count * 2 >= textSampleIndices.count else { return [] }
+        let pairs = numbered.flatMap { index in textNumbers(at: index).map { (number: $0, offset: $0 - index) } }
+        var seen = Set<Int>()
+        return pairs.sorted { abs($0.number - target) < abs($1.number - target) }
+            .map(\.offset)
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// A hit from a sampled offset isn't backed by a vote, so a page with several numbers must also continue the
+    /// sequence on a neighbour; otherwise a chapter number could pass for the page. An unnumbered hit was already
+    /// proved by its neighbours.
+    private func isPageNumber(_ target: Int, at index: Int) -> Bool {
+        guard textNumbers(at: index).count > 1 else { return true }
+        return (index + 1 < document.pageCount && textNumbers(at: index + 1).contains(target + 1))
+            || (index > 0 && textNumbers(at: index - 1).contains(target - 1))
     }
 
     private func fromRecognition(_ target: Int) -> PageMatch? {
-        guard isScanned, let ocrOffset else { return nil }
+        guard textOffset == nil, isScanned, let ocrOffset else { return nil }
         return OffsetEstimator.locate(target, offset: ocrOffset, pageCount: document.pageCount, numbersAt: ocrNumbers)
             .map { PageMatch(printed: target, pdfIndex: $0, method: .textRecognition) }
     }

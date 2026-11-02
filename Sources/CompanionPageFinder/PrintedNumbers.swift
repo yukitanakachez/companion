@@ -23,9 +23,22 @@ enum PrintedNumbers {
                 CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: height)]
     }
 
-    /// Integers in the page's header, then footer, read from the text layer.
+    /// [displayed header, displayed footer] in unrotated page space, which is where PDFKit selections work.
+    static func bands(of rect: CGRect, rotation: Int) -> [CGRect] {
+        let width = rect.width * bandFraction
+        let left = CGRect(x: rect.minX, y: rect.minY, width: width, height: rect.height)
+        let right = CGRect(x: rect.maxX - width, y: rect.minY, width: width, height: rect.height)
+        switch ((rotation % 360) + 360) % 360 {
+        case 90: return [left, right]
+        case 180: return Array(bands(of: rect).reversed())
+        case 270: return [right, left]
+        default: return bands(of: rect)
+        }
+    }
+
+    /// Integers in the page's displayed header, then footer, read from the text layer.
     static func textLayerNumbers(on page: PDFPage) -> [Int] {
-        bands(of: page.bounds(for: .cropBox)).flatMap { band in
+        bands(of: page.bounds(for: .cropBox), rotation: page.rotation).flatMap { band in
             integers(in: page.selection(for: band)?.string ?? "")
         }
     }

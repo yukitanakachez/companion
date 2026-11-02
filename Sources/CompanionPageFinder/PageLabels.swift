@@ -5,8 +5,9 @@ import PDFKit
 struct PageLabelTable: Sendable {
     private let firstIndexByLabel: [String: Int]
 
-    /// nil unless the catalog has /PageLabels AND at least one page's label differs from "\(index + 1)"
-    /// (identity labels carry no information: scanners write them over an offset printed numbering).
+    /// nil unless the catalog has /PageLabels AND at least one page's numeric label differs from "\(index + 1)"
+    /// (identity labels carry no information: scanners write them over an offset printed numbering, sometimes
+    /// after a "Cover" or a few roman pages, so non-numeric labels don't count as evidence).
     static func make(for document: PDFDocument) -> PageLabelTable? {
         var labelsObject: CGPDFObjectRef?
         guard let catalog = document.documentRef?.catalog,
@@ -15,11 +16,8 @@ struct PageLabelTable: Sendable {
         var firstIndex: [String: Int] = [:]
         var isIdentity = true
         for index in 0..<document.pageCount {
-            guard let label = document.page(at: index)?.label else {
-                isIdentity = false
-                continue
-            }
-            if label != "\(index + 1)" { isIdentity = false }
+            guard let label = document.page(at: index)?.label else { continue }
+            if Int(label) != nil, label != "\(index + 1)" { isIdentity = false }
             if firstIndex[label] == nil { firstIndex[label] = index }
         }
         return isIdentity ? nil : PageLabelTable(firstIndexByLabel: firstIndex)

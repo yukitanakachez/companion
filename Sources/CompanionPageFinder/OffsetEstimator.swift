@@ -31,16 +31,28 @@ enum OffsetEstimator {
         for offset in firstSeen where votes[offset]! > (winner.flatMap { votes[$0] } ?? 0) {
             winner = offset
         }
-        guard let winner, votes[winner]! >= min(3, (numberBearing + 1) / 2) else { return nil }
+        // One vote is enough only when no sample disagrees by having no number: a lone stray number proves nothing.
+        let floor = numberBearing == samples.count ? 1 : 2
+        guard let winner, votes[winner]! >= max(floor, min(3, (numberBearing + 1) / 2)) else { return nil }
         return winner
     }
 
     /// Tries target − offset, then +1, −1, +2, −2 … ±10, skipping indices outside 0..<pageCount;
-    /// returns the first index whose numbers contain target.
+    /// returns the first index whose numbers contain target, unless that page also prints the number the offset
+    /// expects there (then the target is its chapter number, not its page). Failing that, an unnumbered page whose
+    /// two neighbours print target − 1 and target + 1 is the target: chapter openers often omit the number.
     static func locate(_ target: Int, offset: Int, pageCount: Int, numbersAt: (Int) -> [Int]) -> Int? {
         let center = target - offset
         var candidates = [center]
         for distance in 1...window { candidates += [center + distance, center - distance] }
-        return candidates.first { (0..<pageCount).contains($0) && numbersAt($0).contains(target) }
+        let inRange = candidates.filter { (0..<pageCount).contains($0) }
+        let direct = inRange.first { index in
+            let numbers = numbersAt(index)
+            return numbers.contains(target) && (index == center || !numbers.contains(index + offset))
+        }
+        return direct ?? inRange.first { index in
+            guard index > 0, index < pageCount - 1, numbersAt(index).isEmpty else { return false }
+            return numbersAt(index - 1).contains(target - 1) && numbersAt(index + 1).contains(target + 1)
+        }
     }
 }
