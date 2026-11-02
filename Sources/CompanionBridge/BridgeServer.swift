@@ -21,6 +21,11 @@ public actor BridgeServer {
     private var sessions: [ConnectionID: BridgeSession] = [:]
     private var authenticated: [Authenticated] = []
     nonisolated let timings: BridgeTimings
+    // `let` actors, so the client reaches them without hopping through the server actor.
+    nonisolated let cache = ContextCache()
+    nonisolated let multiplexer = RequestMultiplexer()
+
+    public nonisolated var browserContext: any BrowserContextProviding { BridgeClient(server: self) }
 
     public init(secrets: any SecretStoring, blocklist: BlocklistConfig,
                 ports: [UInt16] = BridgeConstants.ports, appVersion: String) {
@@ -57,10 +62,33 @@ public actor BridgeServer {
         listener?.cancel()
         listener = nil
         port = nil
-        let open = Array(sessions.values)
+        let open = sessions
         sessions = [:]
         authenticated = []
-        for session in open { await session.close(code: .protocolCode(.goingAway)) }
+        await multiplexer.failAll()
+        for (id, session) in open {
+            await session.close(code: .protocolCode(.goingAway))
+            await cache.connectionClosed(id)
+        }
+    }
+
+    /// The active browser if it is authenticated, else the most recently authenticated session.
+    func requestTarget() async -> ConnectionID? {
+        if let active = await cache.activeConnection(), isAuthenticated(active) { return active }
+        return authenticated.last?.id
+    }
+
+    func send(_ message: AppToExtension, to connection: ConnectionID) throws {
+        guard let target = authenticated.first(where: { $0.id == connection }) else {
+            throw BridgeError(code: .notConnected, message: "Extension not connected")
+        }
+        target.session.enqueue(message)
+    }
+
+    func hasAuthenticatedSession() -> Bool { !authenticated.isEmpty }
+
+    private func isAuthenticated(_ connection: ConnectionID) -> Bool {
+        authenticated.contains { $0.id == connection }
     }
 
     private func accept(_ connection: NWConnection) async {
@@ -76,8 +104,19 @@ public actor BridgeServer {
             expectedToken: { [secrets] in secrets.secret(for: SecretKey.bridgeToken) },
             events: BridgeSession.Events(
                 authenticated: { [weak self] session, hello in await self?.sessionAuthenticated(session, hello) },
-                message: { _, _ in },
-                binary: { _, _, _ in },
+                message: { [cache, multiplexer] id, message in
+                    switch message {
+                    case .tabActivated, .tabContext, .youtubePlayhead, .tabClosed:
+                        await cache.apply(message, from: id)
+                    case .response(let response):
+                        await multiplexer.handleResponse(response, from: id)
+                    case .hello, .progress:
+                        break   // No contract API consumes progress.
+                    }
+                },
+                binary: { [multiplexer] id, header, payload in
+                    await multiplexer.handleBinary(header, payload, from: id)
+                },
                 closed: { [weak self] id in await self?.sessionClosed(id) }))
         sessions[id] = session
         await session.start()
@@ -90,8 +129,10 @@ public actor BridgeServer {
         session.enqueue(.config(blocklist: blocklist))
     }
 
-    private func sessionClosed(_ id: ConnectionID) {
+    private func sessionClosed(_ id: ConnectionID) async {
         sessions[id] = nil
         authenticated.removeAll { $0.id == id }
+        await cache.connectionClosed(id)
+        await multiplexer.connectionClosed(id)
     }
 }

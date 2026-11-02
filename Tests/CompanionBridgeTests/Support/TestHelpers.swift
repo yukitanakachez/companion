@@ -52,3 +52,13 @@ func makeServer(timings: BridgeTimings = .fast, blocklist: BlocklistConfig = .st
     let port = try await server.start()
     return (server, port, try BridgePairing.token(in: secrets), secrets)
 }
+
+/// Polls `probe` every 10 ms until it returns non-nil or `timeout` passes.
+func eventually<T: Sendable>(timeout: Duration = .seconds(2), _ probe: @Sendable () async -> T?) async -> T? {
+    let deadline = ContinuousClock.now + timeout
+    while true {
+        if let value = await probe() { return value }
+        if ContinuousClock.now >= deadline { return nil }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+}

@@ -26,7 +26,6 @@ actor BridgeSession {
     private let events: Events
     private var state = State.awaitingHello
     private var helloTimer: Task<Void, Never>?
-    private var closedFired = false
 
     init(id: ConnectionID, connection: NWConnection, queue: DispatchQueue, timings: BridgeTimings,
          expectedToken: @escaping @Sendable () -> String?, events: Events) {
@@ -39,13 +38,9 @@ actor BridgeSession {
     }
 
     func start() {
-        connection.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .cancelled, .failed:
-                Task { await self?.connectionEnded() }
-            default:
-                break
-            }
+        connection.stateUpdateHandler = { [connection] state in
+            // Cancelling ends the pending receive, which ends the receive loop.
+            if case .failed = state { connection.cancel() }
         }
         connection.start(queue: queue)
         let timeout = timings.helloTimeout
@@ -87,28 +82,24 @@ actor BridgeSession {
         close(code: .privateCode(BridgeConstants.closeCodeUnauthorized))
     }
 
-    private func connectionEnded() async {
-        state = .closing
-        helloTimer?.cancel()
-        guard !closedFired else { return }
-        closedFired = true
-        await events.closed(id)
-    }
-
     /// Each event is awaited before the next frame is read, so a connection's order reaches the cache intact.
+    /// `closed` fires only from here, after the last event, so no late message can follow it into the cache.
     private func receiveLoop() async {
-        while state != .closing {
+        receiving: while state != .closing {
             let frame = await nextFrame()
-            guard state != .closing else { return }
+            guard state != .closing else { break }
             switch frame {
             case .text(let data): await handleText(data)
             case .binary(let data): await handleBinary(data)
             case .ignored: continue
             case .peerClosed, .ended:
+                state = .closing
+                helloTimer?.cancel()
                 connection.cancel()
-                return
+                break receiving
             }
         }
+        await events.closed(id)   // After `close(code:)`, which cancels once its close frame has flushed.
     }
 
     private func nextFrame() async -> Frame {
