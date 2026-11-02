@@ -12,8 +12,10 @@ private let chrome = ConnectionID(raw: 2)
         await cache.apply(try fixtureMessage("ext-tabContext-youtube.json"), from: dia)
         return cache
     }
+    /// Tab 12 keeps its fixture URL, so re-activating it is not a navigation.
     private func activate(_ tabId: Int) throws -> ExtensionToApp {
-        try ext(#"{"v":1,"type":"tabActivated","tabId":\#(tabId),"windowId":3,"url":"https://example-homework.test/unit4/q3","title":"Unit 4"}"#)
+        let url = tabId == 12 ? "https://www.youtube.com/watch?v=abc123XYZ00" : "https://example-homework.test/unit4/q3"
+        return try ext(#"{"v":1,"type":"tabActivated","tabId":\#(tabId),"windowId":3,"url":"\#(url)","title":"Unit 4"}"#)
     }
 
     @Test func activeTabReturnsItsSnapshot() async throws {
@@ -29,6 +31,21 @@ private let chrome = ConnectionID(raw: 2)
         #expect(await cache.activeTabContext()?.tabId == 21)
         await cache.apply(try activate(12), from: dia)
         #expect(await cache.activeTabContext()?.youtube?.videoId == "abc123XYZ00")
+    }
+    // A navigating tab must not keep passing as its previous page. The gatherer skips its own URL check
+    // when a cached tab exists, so a stale snapshot would let a blocked site through until the new
+    // page's context arrives.
+    @Test func navigationDropsThePreviousPagesSnapshot() async throws {
+        let cache = try await diaOnYouTube()
+        await cache.apply(try ext(#"{"v":1,"type":"tabActivated","tabId":12,"windowId":3,"url":"https://secure.chase.com/web/auth/dashboard","title":""}"#), from: dia)
+        #expect(await cache.activeTabContext() == nil)
+    }
+    @Test func reactivatingTheSamePageKeepsItsSnapshot() async throws {
+        let cache = try await diaOnYouTube()
+        await cache.apply(try fixtureMessage("ext-tabActivated.json"), from: dia)
+        #expect(await cache.activeTabContext()?.youtube?.videoId == "abc123XYZ00")
+        await cache.apply(try ext(#"{"v":1,"type":"tabActivated","tabId":12,"windowId":3,"url":"https://www.youtube.com/watch?v=abc123XYZ00#t=5","title":"x"}"#), from: dia)
+        #expect(await cache.activeTabContext()?.youtube?.videoId == "abc123XYZ00")   // a fragment isn't navigation
     }
     @Test func playheadUpdatesOnlyMatchingVideo() async throws {
         let cache = try await diaOnYouTube()

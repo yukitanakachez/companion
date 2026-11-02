@@ -25,6 +25,10 @@ actor ContextCache {
         guard !closed.contains(connection) else { return }
         switch message {
         case .tabActivated(let activated):
+            let key = Key(connection: connection, tabId: activated.tabId)
+            if let cached = snapshots[key], !Self.isSamePage(cached.url, activated.url) {
+                snapshots[key] = nil   // navigated: the old page's context must not pass for the new one
+            }
             activations[connection] = (activated.tabId, nextOrder())
         case .tabContext(let context):
             snapshots[Key(connection: connection, tabId: context.tabId)] = context
@@ -42,6 +46,10 @@ actor ContextCache {
         case .hello, .response, .progress:
             break
         }
+    }
+
+    private static func isSamePage(_ a: String, _ b: String) -> Bool {
+        a.prefix { $0 != "#" } == b.prefix { $0 != "#" }
     }
 
     /// Stores a `getTabContext` answer. It activates its tab only when nothing is active: an answer can
