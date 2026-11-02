@@ -77,6 +77,36 @@ extension WindowTests { @MainActor @Suite struct BubbleControllerTests {
         c.contentHeightDidChange(5000); #expect(c.panel.frame.height == 520 && screen.contains(c.panel.frame))
         c.contentHeightDidChange(10);   #expect(c.panel.frame.height == 72)
     }
+    @Test func aDragSticksThroughHeightChangesUntilTheNextShow() {
+        defer { c.hide() }
+        let cursor = CGPoint(x: screen.midX.rounded(), y: screen.midY.rounded())
+        c.show(cursor: cursor, avoiding: nil)
+        let top = screen.maxY - 40
+        c.panel.setFrameOrigin(CGPoint(x: screen.minX + 20, y: top - c.panel.frame.height))   // what a drag does
+        c.contentHeightDidChange(300)
+        #expect(c.panel.frame.minX == screen.minX + 20 && c.panel.frame.maxY == top && c.panel.frame.height == 300)
+        c.contentHeightDidChange(400)
+        #expect(c.panel.frame.minX == screen.minX + 20 && c.panel.frame.maxY == top && c.panel.frame.height == 400)
+        c.hide()
+        c.show(cursor: cursor, avoiding: nil)
+        #expect(c.panel.frame == BubblePlacement.frame(cursor: cursor, size: c.panel.frame.size, screens: BubblePlacement.currentScreens(), avoid: nil))
+    }
+    // Hosting can swallow clicks, so this asks AppKit what a mouse-down at each spot would actually reach.
+    @Test func emptyPartsOfTheBubbleReachTheDragAreaAndTheInputDoesNot() throws {
+        defer { c.hide() }
+        vm.setModelName("Haiku 4.5")
+        c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil)
+        let content = try #require(c.panel.contentView)
+        content.layoutSubtreeIfNeeded()
+        let hit = { (p: CGPoint) in content.superview?.hitTest(content.convert(p, to: content.superview)) ?? content.hitTest(p) }
+        let bounds = content.bounds
+        #expect(hit(CGPoint(x: 4, y: 4)) is BubbleDragArea)                                 // chrome corner
+        #expect(hit(CGPoint(x: bounds.midX, y: bounds.maxY - 4)) is BubbleDragArea)          // chrome top or bottom edge
+        let footerY = content.isFlipped ? bounds.maxY - 18 : 18
+        #expect(hit(CGPoint(x: 40, y: footerY)) is BubbleDragArea)                           // the footer's text
+        let inputPoint = c.input.convert(CGPoint(x: 5, y: 5), to: content)
+        #expect(hit(inputPoint) === c.input)
+    }
     // Context set while the panel is hidden (a resumed thread, chips landing first) must not open it clipped.
     @Test func showSizesToContentSetWhileHidden() {
         defer { c.hide() }

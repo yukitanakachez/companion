@@ -49,6 +49,20 @@ enum BubblePlacement {
         return CGRect(x: frame.minX, y: min(max(y, visibleFrame.minY), visibleFrame.maxY - h), width: frame.width, height: h)
     }
 
+    /// Once the user has moved the bubble it stays where they put it: the top-left corner holds and
+    /// the height changes downward, shifting only as far as staying inside visibleFrame requires.
+    static func resizedAfterDrag(_ frame: CGRect, toHeight height: CGFloat, visibleFrame: CGRect) -> CGRect {
+        let h = min(height, visibleFrame.height), w = min(frame.width, visibleFrame.width)
+        return CGRect(x: min(max(frame.minX, visibleFrame.minX), visibleFrame.maxX - w),
+                      y: min(max(frame.maxY - h, visibleFrame.minY), visibleFrame.maxY - h),
+                      width: w, height: h)
+    }
+
+    /// The display under the frame's centre; a frame off every display uses the fallback point's.
+    static func visibleFrame(containing frame: CGRect, fallback: CGPoint, screens: [ScreenGeometry]) -> CGRect? {
+        (screen(for: CGPoint(x: frame.midX, y: frame.midY), in: screens) ?? screen(for: fallback, in: screens) ?? screens.first)?.visibleFrame
+    }
+
     /// Max edges inclusive: `NSEvent.mouseLocation` can sit exactly on a display's top or right edge.
     static func screen(for point: CGPoint, in screens: [ScreenGeometry]) -> ScreenGeometry? {
         screens.first {

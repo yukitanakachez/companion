@@ -36,4 +36,20 @@ func r(_ x: CGFloat, _ y: CGFloat, _ h: CGFloat = 200) -> CGRect { CGRect(x: x, 
     #expect(resize(r(616, 384), 300, top: true) == r(616, 284, 300)); #expect(resize(r(616, 100, 72), 520, top: true) == r(616, 60, 520))
     #expect(resize(r(216, 166), 400, top: false) == r(216, 166, 400)); #expect(resize(r(216, 700), 2000, top: false) == r(216, 60, 889))
 }
+@Test func heightChangesAfterADragKeepTheMovedTopLeft() {
+    let moved = r(900, 500)
+    #expect(BubblePlacement.resizedAfterDrag(moved, toHeight: 300, visibleFrame: main.visibleFrame) == r(900, 400, 300))
+    #expect(BubblePlacement.resizedAfterDrag(moved, toHeight: 72, visibleFrame: main.visibleFrame) == r(900, 628, 72))
+}
+@Test func heightChangesAfterADragStayInsideTheVisibleFrame() {
+    let v = main.visibleFrame
+    #expect(BubblePlacement.resizedAfterDrag(r(900, 80), toHeight: 300, visibleFrame: v) == r(900, 60, 300))   // grows past the bottom
+    #expect(BubblePlacement.resizedAfterDrag(r(-100, 900), toHeight: 200, visibleFrame: v) == r(0, 749))       // dragged off the top left
+    #expect(BubblePlacement.resizedAfterDrag(r(1400, 400), toHeight: 200, visibleFrame: v) == r(1132, 400))    // dragged off the right
+    #expect(BubblePlacement.resizedAfterDrag(r(900, 400), toHeight: 2000, visibleFrame: v) == r(900, 60, 889))
+}
+@Test func aDraggedBubbleUsesTheDisplayItWasDraggedTo() {
+    #expect(BubblePlacement.visibleFrame(containing: r(-1000, 400), fallback: CGPoint(x: 600, y: 600), screens: [main, left]) == left.visibleFrame)
+    #expect(BubblePlacement.visibleFrame(containing: r(9000, 400), fallback: CGPoint(x: 600, y: 600), screens: [main, left]) == main.visibleFrame)
+}
 @Test func clampedHeight() { #expect([10, 300, 5000].map(BubbleMetrics.clampedHeight) == [72, 300, 520]) }
