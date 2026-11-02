@@ -23,8 +23,7 @@ struct LiveAccessibilityReader: AccessibilityReading {
     func focusedWindow(pid: Int32) async -> FocusedWindowInfo? {
         guard isTrusted(), let window = element(Self.application(pid), kAXFocusedWindowAttribute) else { return nil }
         var frame: CGRect?
-        if let position: CGPoint = axValue(window, kAXPositionAttribute, .cgPoint, .zero),
-           let size: CGSize = axValue(window, kAXSizeAttribute, .cgSize, .zero) {
+        if let position = point(window, kAXPositionAttribute), let size = size(window, kAXSizeAttribute) {
             frame = ScreenGeometry.flipped(CGRect(origin: position, size: size),
                                            primaryHeight: ScreenGeometry.primaryDisplayHeight())
         }
@@ -118,10 +117,21 @@ struct LiveAccessibilityReader: AccessibilityReading {
         copy(parent, attribute).flatMap { Self.asElement($0) }
     }
 
-    private func axValue<T>(_ element: AXUIElement, _ attribute: String, _ type: AXValueType, _ initial: T) -> T? {
+    private func axValue(_ element: AXUIElement, _ attribute: String) -> AXValue? {
         guard let raw = copy(element, attribute), CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
-        var result = initial
-        return AXValueGetValue(raw as! AXValue, type, &result) ? result : nil
+        return (raw as! AXValue)
+    }
+
+    private func point(_ element: AXUIElement, _ attribute: String) -> CGPoint? {
+        var result = CGPoint.zero
+        guard let value = axValue(element, attribute), AXValueGetValue(value, .cgPoint, &result) else { return nil }
+        return result
+    }
+
+    private func size(_ element: AXUIElement, _ attribute: String) -> CGSize? {
+        var result = CGSize.zero
+        guard let value = axValue(element, attribute), AXValueGetValue(value, .cgSize, &result) else { return nil }
+        return result
     }
 
     private static func asElement(_ value: AnyObject) -> AXUIElement? {
