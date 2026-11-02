@@ -38,3 +38,17 @@ func expectBridgeError(_ code: BridgeErrorCode, sourceLocation: SourceLocation =
         Issue.record("Expected BridgeError(\(code)), got \(error)", sourceLocation: sourceLocation)
     }
 }
+
+extension BridgeTimings {
+    static let fast = BridgeTimings(helloTimeout: .seconds(1), pingInterval: .seconds(60),
+                                    drivePdfTimeout: .seconds(3), viewerTimeout: .seconds(1))
+}
+
+/// A started server on an ephemeral port with appVersion "test-1.0".
+func makeServer(timings: BridgeTimings = .fast, blocklist: BlocklistConfig = .starter) async throws
+    -> (server: BridgeServer, port: UInt16, token: String, secrets: FakeSecretStore) {
+    let secrets = FakeSecretStore()
+    let server = BridgeServer(secrets: secrets, blocklist: blocklist, ports: [0], appVersion: "test-1.0", timings: timings)
+    let port = try await server.start()
+    return (server, port, try BridgePairing.token(in: secrets), secrets)
+}
