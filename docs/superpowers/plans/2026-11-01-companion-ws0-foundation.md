@@ -190,7 +190,9 @@ public struct CapturedContext {
 }
 public enum KnownBrowsers {
     public static let bundleIDs: Set<String>      // exact list below
+    public static let chromiumBundleIDs: Set<String>   // bundleIDs minus Safari and Firefox
     public static func isBrowser(_ bundleID: String) -> Bool
+    public static func usesExtension(_ bundleID: String) -> Bool   // true for chromiumBundleIDs
 }
 public func formatTimestamp(_ seconds: Double) -> String
 ```

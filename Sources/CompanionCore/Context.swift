@@ -294,6 +294,15 @@ public struct CapturedContext: Sendable, Equatable {
 }
 
 public enum KnownBrowsers {
+    /// Chromium-based browsers, which can run the Companion Bridge extension.
+    public static let chromiumBundleIDs: Set<String> = [
+        "company.thebrowser.dia",
+        "com.google.Chrome",
+        "company.thebrowser.Browser",
+        "com.brave.Browser",
+        "com.microsoft.edgemac",
+    ]
+    public static func usesExtension(_ bundleID: String) -> Bool { chromiumBundleIDs.contains(bundleID) }
     public static let bundleIDs: Set<String> = [
         "company.thebrowser.dia",
         "com.google.Chrome",

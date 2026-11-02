@@ -94,6 +94,10 @@ import CompanionCore
 @Test func knownBrowsers() {
     #expect(KnownBrowsers.isBrowser("company.thebrowser.dia"))
     #expect(!KnownBrowsers.isBrowser("com.apple.Notes"))
+    #expect(KnownBrowsers.chromiumBundleIDs.count == 5 && KnownBrowsers.chromiumBundleIDs.isSubset(of: KnownBrowsers.bundleIDs))
+    #expect(KnownBrowsers.usesExtension("company.thebrowser.dia"))
+    #expect(!KnownBrowsers.usesExtension("com.apple.Safari") && !KnownBrowsers.usesExtension("org.mozilla.firefox"))
+    #expect(!KnownBrowsers.usesExtension("com.apple.Notes"))
     #expect(KnownBrowsers.bundleIDs == ["company.thebrowser.dia", "com.google.Chrome", "company.thebrowser.Browser",
                                         "com.brave.Browser", "com.microsoft.edgemac", "com.apple.Safari", "org.mozilla.firefox"])
 }
