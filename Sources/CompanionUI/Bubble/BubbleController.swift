@@ -43,6 +43,7 @@ import SwiftUI
             return
         }
         lastCursor = cursor
+        panel.contentView?.layoutSubtreeIfNeeded()   // SwiftUI defers updates while hidden; this delivers the current height
         let size = CGSize(width: BubbleMetrics.width, height: BubbleMetrics.clampedHeight(lastContentHeight))
         panel.setFrame(BubblePlacement.frame(cursor: cursor, size: size, screens: BubblePlacement.currentScreens(), avoid: avoiding),
                        display: false)

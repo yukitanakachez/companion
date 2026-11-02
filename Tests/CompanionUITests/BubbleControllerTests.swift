@@ -61,6 +61,23 @@ extension WindowTests { @MainActor @Suite struct BubbleControllerTests {
         c.contentHeightDidChange(5000); #expect(c.panel.frame.height == 520 && screen.contains(c.panel.frame))
         c.contentHeightDidChange(10);   #expect(c.panel.frame.height == 72)
     }
+    // Context set while the panel is hidden (a resumed thread, chips landing first) must not open it clipped.
+    @Test func showSizesToContentSetWhileHidden() {
+        defer { c.hide() }
+        let items = (0..<8).map { _ in ContextItem(piece: .transcriptWindow(segments: [], from: 581, to: 761)) }
+        vm.setContext(CapturedContext(front: nil, privacy: .allowed, kind: .youtube, items: items, isComplete: true))
+        c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil)
+        #expect(c.panel.frame.height > 100)
+    }
+    @Test func contentAddedWhileVisibleResizesThePanel() {
+        defer { c.hide() }
+        c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil)
+        let before = c.panel.frame.height
+        let items = (0..<8).map { _ in ContextItem(piece: .transcriptWindow(segments: [], from: 581, to: 761)) }
+        vm.setContext(CapturedContext(front: nil, privacy: .allowed, kind: .youtube, items: items, isComplete: true))
+        for _ in 0..<30 where c.panel.frame.height == before { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        #expect(c.panel.frame.height > before)
+    }
     @Test func popOutSharesTheThread() throws {
         defer { c.hide() }
         vm.resetThread([ThreadMessage(role: .user, markdown: "q")]); c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil)

@@ -198,11 +198,12 @@ struct BubbleView: View {
                 Keycap("⌘H")
             }
             .foregroundStyle(viewModel.hintMode ? Theme.accent : Theme.footer)
-            .padding(.horizontal, viewModel.hintMode ? 4 : 0)
+            .padding(.horizontal, viewModel.hintMode ? 3 : 0)
+            .fixedSize()
             .background(viewModel.hintMode ? Theme.accent.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
-            Text("Esc to close").padding(.leading, 4)
+            Text("Esc to close").fixedSize()
         }
-        .font(.system(size: 11))
+        .font(.system(size: 10.5))
         .foregroundStyle(Theme.footer)
         .lineLimit(1)
     }
