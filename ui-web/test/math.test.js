@@ -23,3 +23,11 @@ test('Reading line', () => {
   const d = dom('Reading: $x^2-5x+6=0$\n\nAt 12:20 he factored it.', renderAssistant);
   expect(d.querySelector('.reading .katex')).not.toBeNull(); expect(d.querySelector('.reading').textContent).not.toContain('12:20');
 });
+test('dollars never pair across code', () => {
+  const a = dom('Set $PATH with `export PATH=$PATH:/x` now'); expect(a.querySelector('code').textContent).toBe('export PATH=$PATH:/x'); expect(a.querySelector('.katex')).toBeNull();
+  const b = dom('Price $5\n```sh\nA=$B\n```'); expect(b.querySelector('pre').textContent).toContain('A=$B'); expect(b.querySelector('.katex')).toBeNull();
+  const c = dom('Costs $$ then\n\n```\n$$\n```'); expect(c.querySelector('pre').textContent).toContain('$$'); expect(c.querySelector('.katex')).toBeNull();
+});
+test('tables get a scrolling wrapper', () => {
+  expect(dom('| a | b |\n|---|---|\n| 1 | 2 |').querySelector('.table-scroll > table')).not.toBeNull();
+});

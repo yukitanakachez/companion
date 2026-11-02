@@ -1,6 +1,21 @@
 import AppKit
 import SwiftUI
 
+/// The pop-out is an ordinary window, so unlike the panel it needs the app active, and must hand
+/// activation back when it closes: otherwise keys go nowhere and the next capture sees Companion.
+@MainActor struct BubbleFocusHooks {
+    var activate: () -> Void
+    /// Remembers the frontmost app; the returned closure gives it activation back.
+    var captureFrontmost: () -> (() -> Void)?
+
+    static let live = BubbleFocusHooks(
+        activate: { NSApp.activate() },
+        captureFrontmost: {
+            guard let app = NSWorkspace.shared.frontmostApplication, app != .current else { return nil }
+            return { app.activate() }
+        })
+}
+
 /// Owns the bubble panel, built once here and reused for every summon.
 @MainActor public final class BubbleController {
     let panel: BubblePanel
@@ -10,6 +25,8 @@ import SwiftUI
     private var popOutController: PopOutWindowController?
     private var lastContentHeight = BubbleMetrics.minHeight
     private var lastCursor: CGPoint = .zero
+    private var restoreFocus: (() -> Void)?
+    var focusHooks = BubbleFocusHooks.live
 
     var popOutWindow: NSWindow? { popOutController?.window }
     var popOutViewModel: BubbleViewModel? { popOutController?.viewModel }
@@ -38,6 +55,8 @@ import SwiftUI
     /// and focused instead, and the panel stays hidden.
     public func show(cursor: NSPoint, avoiding: CGRect?) {
         if let popOutController, popOutController.window.isVisible {
+            captureFocusIfNeeded()
+            focusHooks.activate()
             popOutController.window.makeKeyAndOrderFront(nil)
             popOutController.focus()
             return
@@ -56,6 +75,8 @@ import SwiftUI
     /// Focuses the input of whichever window is visible.
     public func focusInput() {
         if let popOutController, popOutController.window.isVisible {
+            captureFocusIfNeeded()
+            focusHooks.activate()
             popOutController.focus()
         } else if panel.isVisible {
             panel.makeKey()
@@ -68,6 +89,8 @@ import SwiftUI
     public func hide() {
         panel.orderOut(nil)
         popOutWindow?.close()
+        restoreFocus?()
+        restoreFocus = nil
     }
 
     /// Moves the thread into the larger window. No-op unless the panel is visible.
@@ -78,6 +101,8 @@ import SwiftUI
         panel.orderOut(nil)
         let controller = popOutController ?? PopOutWindowController(viewModel: viewModel)
         popOutController = controller
+        captureFocusIfNeeded()
+        focusHooks.activate()
         controller.show(centeredIn: visibleFrame)
     }
 
@@ -92,6 +117,10 @@ import SwiftUI
         guard frame != panel.frame else { return }
         panel.setFrame(frame, display: true)
         panel.invalidateShadow()
+    }
+
+    private func captureFocusIfNeeded() {
+        if restoreFocus == nil { restoreFocus = focusHooks.captureFrontmost() }
     }
 
     private func focusPanelInput() {

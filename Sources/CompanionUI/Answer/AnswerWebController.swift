@@ -85,11 +85,25 @@ enum AnswerWebError: Error { case timeout }
 private struct UncheckedResult: @unchecked Sendable { let value: Any? }
 
 extension AnswerWebController: WKNavigationDelegate {
+    /// Links come from model output, so only web links leave the bubble.
+    static func opensExternally(_ url: URL) -> Bool {
+        ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+    }
+
+    /// Reloads and re-renders, so a killed web process never leaves a blank answer.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        isReady = false
+        pending = pending ?? rendered
+        hasRendered = false
+        rendered = []
+        if let indexURL { webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent()) }
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         let url = navigationAction.request.url
         if navigationAction.navigationType == .linkActivated {
-            if let url { NSWorkspace.shared.open(url) }
+            if let url, Self.opensExternally(url) { NSWorkspace.shared.open(url) }
             decisionHandler(.cancel)
         } else {
             decisionHandler(url?.standardizedFileURL == indexURL?.standardizedFileURL ? .allow : .cancel)

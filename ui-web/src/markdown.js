@@ -4,6 +4,8 @@ import { protectMath, restoreMath } from './math.js';
 
 const md = new MarkdownIt({ html: false, linkify: false });
 md.disable('image');
+md.renderer.rules.table_open = () => '<div class="table-scroll"><table>\n';
+md.renderer.rules.table_close = () => '</table></div>\n';
 
 // Re-rendering a streaming message must not re-typeset math that hasn't changed.
 const memo = new Map();

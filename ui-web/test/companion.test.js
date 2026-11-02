@@ -20,3 +20,12 @@ test('appendDelta is throttled to one render per 33 ms', () => {
   expect(c.renderCount() - r0 - 1).toBeLessThanOrEqual(Math.ceil(1500 / 33) + 2); expect(c.debugMarkdown('a').length).toBe(3200);
   c.appendDelta('zzz', 'x'); expect(c.debugMarkdown('zzz')).toBeNull();   // unknown ids are ignored
 });
+test('a new message scrolls into view even when scrolled up', () => {
+  const s = document.scrollingElement ?? document.documentElement;
+  Object.defineProperty(s, 'scrollHeight', { configurable: true, value: 5000 });
+  Object.defineProperty(s, 'clientHeight', { configurable: true, value: 300 });
+  c.render([msg('u', 'user', 'q', false)]); s.scrollTop = 0;
+  c.render([msg('u', 'user', 'q', false)]); expect(s.scrollTop).toBe(0);   // same thread: reading position stays
+  c.render([msg('u', 'user', 'q', false), msg('a', 'assistant', '', true)]); expect(s.scrollTop).toBe(5000);
+  delete s.scrollHeight; delete s.clientHeight;
+});

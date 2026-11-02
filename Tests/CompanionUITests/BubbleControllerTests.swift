@@ -1,5 +1,6 @@
 import AppKit
 import CompanionCore
+import CompanionTestSupport
 import Testing
 @testable import CompanionUI
 
@@ -77,6 +78,30 @@ extension WindowTests { @MainActor @Suite struct BubbleControllerTests {
         vm.setContext(CapturedContext(front: nil, privacy: .allowed, kind: .youtube, items: items, isComplete: true))
         for _ in 0..<30 where c.panel.frame.height == before { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
         #expect(c.panel.frame.height > before)
+    }
+    @Test func summonActivatesForAnOpenPopOutAndHideGivesFocusBack() {
+        var activations = 0, restores = 0
+        c.focusHooks = BubbleFocusHooks(activate: { activations += 1 }, captureFrontmost: { { restores += 1 } })
+        c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil)
+        c.popOut(); #expect(activations == 1 && restores == 0)
+        c.show(cursor: .zero, avoiding: nil); #expect(activations == 2)
+        c.focusInput(); #expect(activations == 3)
+        c.hide(); #expect(restores == 1)
+        c.hide(); #expect(restores == 1)
+    }
+    @Test func hidingTheBubbleAloneTouchesNoFocus() {
+        var restores = 0
+        c.focusHooks = BubbleFocusHooks(activate: {}, captureFrontmost: { { restores += 1 } })
+        c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil); c.hide()
+        #expect(restores == 0)
+    }
+    @Test func tenPageThumbnailsAllFit() {
+        let page = { (i: Int) in RenderedPage(printedLabel: "\(i)", pdfIndex: i, image: Fixtures.samplePNG(), text: "") }
+        let one = BubbleViewModel(); one.setPageThumbnails([page(1)])
+        let oneController = BubbleController(viewModel: one); oneController.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil)
+        let single = oneController.panel.frame.height; oneController.hide()
+        vm.setPageThumbnails((1...10).map(page)); c.show(cursor: CGPoint(x: screen.midX, y: screen.midY), avoiding: nil); defer { c.hide() }
+        #expect(c.panel.frame.height > single)   // the tenth wraps instead of clipping
     }
     @Test func popOutSharesTheThread() throws {
         defer { c.hide() }

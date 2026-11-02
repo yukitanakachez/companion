@@ -130,7 +130,7 @@ struct BubbleView: View {
     }
 
     private func pageThumbnails(live: Bool) -> some View {
-        HStack(spacing: 5) {
+        WrappingLayout(spacing: 5) {
             ForEach(viewModel.pageThumbnails, id: \.pdfIndex) { page in
                 ZStack(alignment: .bottomTrailing) {
                     ThumbnailImage(png: live ? page.image.png : nil, maxPixels: 128)

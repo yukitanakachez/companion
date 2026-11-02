@@ -7,7 +7,11 @@
   html, body { background: transparent; margin: 0; }
   body { font: 13px/1.45 -apple-system, system-ui, sans-serif; color: #ECECF0; overflow-x: hidden; }
   #thread { display: flow-root; }
+  .msg { overflow-wrap: anywhere; }
   .msg + .msg { margin-top: 8px; }
+  .table-scroll { overflow-x: auto; margin: 0 0 6px; }
+  th, td { padding: 2px 8px 2px 0; text-align: left; overflow-wrap: normal; }
+  p:has(.katex), li:has(.katex) { overflow-x: auto; overflow-y: hidden; }
   .q { color: #A1A1A6; }
   .reading { font-family: Georgia, serif; color: #A1A1A6; border-left: 2px solid #0A84FF; padding-left: 6px; margin: 0 0 6px; }
   p { margin: 0 0 6px; }

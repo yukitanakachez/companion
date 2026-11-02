@@ -15,6 +15,18 @@ extension WindowTests { @MainActor @Suite struct AnswerWebViewTests {
         c.webView.frame = CGRect(x: 0, y: 0, width: 380, height: 300)
         window.contentView?.addSubview(c.webView)
     }
+    @Test func recoversWhenTheWebProcessDies() async throws {
+        try await c.waitUntilReady(timeout: .seconds(10))
+        c.apply([ThreadMessage(role: .assistant, markdown: "$x^2$")])
+        c.webViewWebContentProcessDidTerminate(c.webView)
+        #expect(!c.isReady)
+        try await c.waitUntilReady(timeout: .seconds(10))
+        #expect(try await c.evaluate("document.querySelectorAll('.katex').length > 0") as? Bool == true)
+    }
+    @Test func onlyWebLinksOpen() {
+        #expect(AnswerWebController.opensExternally(URL(string: "https://a.com")!) && AnswerWebController.opensExternally(URL(string: "HTTP://a.com")!))
+        for bad in ["smb://x/y", "file:///etc/passwd", "x-app://do", "mailto:a@b.c"] { #expect(!AnswerWebController.opensExternally(URL(string: bad)!)) }
+    }
     @Test func webResourcesArePresent() throws {
         for f in ["index.html", "renderer.js", "katex.min.css"] { #expect(Bundle.module.url(forResource: f, withExtension: nil, subdirectory: "web") != nil) }
         let cssURL = try #require(Bundle.module.url(forResource: "katex.min", withExtension: "css", subdirectory: "web"))

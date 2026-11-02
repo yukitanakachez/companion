@@ -57,7 +57,9 @@ export function createCompanion(root, { post = () => {}, minIntervalMs = 33 } = 
     render(thread) {
       if (timer !== null) { clearTimeout(timer); timer = null; }
       dirty = new Set();
+      const lastBefore = messages.at(-1)?.id;
       messages = (typeof thread === 'string' ? JSON.parse(thread) : thread).map((m) => ({ ...m }));
+      const lastChanged = messages.at(-1)?.id !== lastBefore;
       update(() => {
         root.replaceChildren(...messages.map((m) => {
           const el = doc.createElement('div');
@@ -67,6 +69,7 @@ export function createCompanion(root, { post = () => {}, minIntervalMs = 33 } = 
           return el;
         }));
       });
+      if (lastChanged) { const s = scroller(); s.scrollTop = s.scrollHeight; }   // new content is what the user is waiting for
     },
     appendDelta(id, text) {
       const m = messages.find((x) => x.id === id);

@@ -44,7 +44,6 @@ private final class PopOutWindow: NSWindow {
             let size = window.frame.size
             window.setFrameOrigin(CGPoint(x: visibleFrame.midX - size.width / 2, y: visibleFrame.midY - size.height / 2))
         }
-        NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         focus()
     }

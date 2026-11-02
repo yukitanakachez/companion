@@ -5,12 +5,14 @@ const OPEN = '';
 const CLOSE = '';
 const TOKEN = /(\d+)/g;
 
+const FENCE = /^ {0,3}(`{3}|~{3})/;
 const isSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r';
 const isDigit = (c) => c >= '0' && c <= '9';
 
 // Index of the closing delimiter, skipping backslash escapes inside the TeX; -1 if none.
 function findClosing(s, from, closer) {
   for (let i = from; i < s.length; i++) {
+    if (s[i - 1] === '\n' && FENCE.test(s.slice(i, i + 8))) return -1;   // never pair across a code block
     if (s.startsWith(closer, i)) return i;
     if (s[i] === '\\') i++;
   }
@@ -24,6 +26,7 @@ function findInlineClosing(s, from) {
   for (let i = from; i < s.length; i++) {
     const c = s[i];
     if (c === '\\') { i++; continue; }
+    if (c === '`') return -1;   // never pair across code
     if (c === '\n' && /^[ \t]*(\r?\n|$)/.test(s.slice(i + 1))) return -1;
     if (c === '$') {
       if (isSpace(s[i - 1]) || isDigit(s[i + 1] ?? '')) return -1;
