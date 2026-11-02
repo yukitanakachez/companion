@@ -1,0 +1,7 @@
+{"wireMagic":"pb3","events":[
+ {"tStartMs":0,"dDurationMs":1450000,"id":1,"wpWinPosId":1,"wsWinStyleId":1},
+ {"tStartMs":575000,"dDurationMs":6200,"wWinId":1,"segs":[{"utf8":"so now we "},{"utf8":"factor the left side","tOffsetMs":800}]},
+ {"tStartMs":581200,"dDurationMs":10,"wWinId":1,"aAppend":1,"segs":[{"utf8":"\n"}]},
+ {"tStartMs":740500,"dDurationMs":5000,"wWinId":1,"segs":[{"utf8":"x minus two times\nx minus three equals zero"}]},
+ {"tStartMs":755000,"dDurationMs":6000,"wWinId":1,"segs":[{"utf8":"so x has to be two or three"}]}
+]}
