@@ -24,6 +24,10 @@ import Testing
 @MainActor @Suite(.serialized) enum WindowTests {}
 
 @MainActor enum TestApp {
+    /// While locked, the login window is frontmost and no process's panel can become key.
+    static var screenIsLocked: Bool {
+        (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] != nil
+    }
     private static var done = false
     static func ensure() {
         guard !done else { return }
