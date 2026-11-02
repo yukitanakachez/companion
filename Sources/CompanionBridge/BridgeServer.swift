@@ -74,7 +74,7 @@ public actor BridgeServer {
 
     /// The active browser if it is authenticated, else the most recently authenticated session.
     func requestTarget() async -> ConnectionID? {
-        if let active = await cache.activeConnection(), isAuthenticated(active) { return active }
+        if let active = await cache.activeConnection(), hasAuthenticatedSession(active) { return active }
         return authenticated.last?.id
     }
 
@@ -87,7 +87,7 @@ public actor BridgeServer {
 
     func hasAuthenticatedSession() -> Bool { !authenticated.isEmpty }
 
-    private func isAuthenticated(_ connection: ConnectionID) -> Bool {
+    func hasAuthenticatedSession(_ connection: ConnectionID) -> Bool {
         authenticated.contains { $0.id == connection }
     }
 
@@ -134,5 +134,16 @@ public actor BridgeServer {
         authenticated.removeAll { $0.id == id }
         await cache.connectionClosed(id)
         await multiplexer.connectionClosed(id)
+    }
+}
+
+extension BridgeServer {
+    public nonisolated var documentFetcher: any DocumentFetching { BridgeClient(server: self) }
+    public nonisolated var viewerDriver: any ViewerDriving { BridgeClient(server: self) }
+
+    /// The browser holding that tab if it is authenticated, else `requestTarget()`.
+    func viewerTarget(tabId: Int) async -> ConnectionID? {
+        if let owner = await cache.connection(forTab: tabId), hasAuthenticatedSession(owner) { return owner }
+        return await requestTarget()
     }
 }
