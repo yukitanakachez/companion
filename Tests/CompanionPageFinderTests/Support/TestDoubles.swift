@@ -1,4 +1,6 @@
 @testable import CompanionPageFinder
+import CompanionCore
+import CompanionTestSupport
 import CoreGraphics
 import Foundation
 
@@ -27,4 +29,32 @@ final class StepRecorder: @unchecked Sendable {
     var callback: @Sendable (PageFinderStep) -> Void {
         { step in self.lock.withLock { self.recorded.append(step) } }
     }
+}
+
+func encodedPage(_ index: Int) -> ImageAttachment {
+    Fixtures.samplePNG(width: index + 1, height: 1)
+}
+
+/// Decodes the page index from the image width (see `encodedPage`) and reports what that page prints.
+struct IndexEncodedReader: PrintedNumberReading {
+    let printed: @Sendable (Int) -> String?
+
+    func numbers(inPageImage image: CGImage) -> [Int] {
+        printed(image.width - 1).flatMap { Int($0) }.map { [$0] } ?? []
+    }
+}
+
+actor FailingViewerDriver: ViewerDriving {
+    private let info: ViewerInfo
+    private(set) var restoredIndex: Int?
+
+    init(info: ViewerInfo) { self.info = info }
+
+    func viewerInfo(tabId: Int) async throws -> ViewerInfo { info }
+
+    func capturePage(tabId: Int, pageIndex: Int) async throws -> ImageAttachment {
+        throw BridgeError(code: .timeout, message: "capture failed")
+    }
+
+    func restore(tabId: Int, pageIndex: Int) async throws { restoredIndex = pageIndex }
 }

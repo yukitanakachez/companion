@@ -93,3 +93,46 @@ func bridgeErrorsBecomeMessages(code: BridgeErrorCode, message: String) async th
     #expect(!rec.steps.contains(.downloadBlocked))
     #expect(await viewer.capturedIndices.isEmpty)
 }
+
+private func blockedFinder(viewer: FakeViewerDriver, printed: @escaping @Sendable (Int) -> String?) -> PageFinder {
+    PageFinder(fetcher: FakeDocumentFetcher(failure: BridgeError(code: .downloadBlocked, message: "x")), viewer: viewer,
+               cache: PDFSessionCache(directory: temporaryDirectory()), viewerReader: IndexEncodedReader(printed: printed))
+}
+
+private func openViewer() -> FakeViewerDriver {
+    FakeViewerDriver(info: ViewerInfo(pageCount: 300, currentIndex: 87), page: { encodedPage($0) })
+}
+
+@Test func blockedDownloadScrollsTheOpenViewer() async throws {
+    let viewer = openViewer()
+    let finder = blockedFinder(viewer: viewer, printed: TestPDF.book(frontMatter: 16))
+    let rec = StepRecorder()
+    let outcome = await finder.find(PageReference(pages: [231, 232], requestedCount: 2), question: "explain pages 231-232",
+                                    tab: try FixtureTabs.drive(), lastUsed: nil, preferred: nil, progress: rec.callback)
+    #expect(rec.steps == [.downloading(title: "Algebra 2 Textbook.pdf"), .downloadBlocked,
+                          .scrollingViewer(target: 231), .matched(printed: 231, pdfIndex: 246, method: .viewer),
+                          .scrollingViewer(target: 232), .matched(printed: 232, pdfIndex: 247, method: .viewer)])
+    guard case .found(let choice, let pages, let missing) = outcome else { Issue.record("\(outcome)"); return }
+    #expect(choice == DocumentChoice(current: FixtureTabs.textbook, alternatives: []))
+    #expect(pages.map(\.pdfIndex) == [246, 247] && pages.allSatisfy { $0.text.isEmpty } && missing.isEmpty)
+    #expect(await viewer.restoredIndex == 87)
+}
+
+@Test func viewerFindsNothing() async throws {
+    let viewer = openViewer()
+    let outcome = await blockedFinder(viewer: viewer, printed: { _ in nil })
+        .find(PageReference(pages: [231, 232], requestedCount: 2), question: "explain pages 231-232",
+              tab: try FixtureTabs.drive(), lastUsed: nil, preferred: nil, progress: { _ in })
+    #expect(outcome == .notFound(document: FixtureTabs.textbook, pages: [231, 232]))
+    #expect(await viewer.restoredIndex == 87)
+}
+
+@Test func blockedDownloadForOtherDocumentDoesNotScroll() async throws {
+    let viewer = openViewer(), rec = StepRecorder()
+    let outcome = await blockedFinder(viewer: viewer, printed: TestPDF.book(frontMatter: 16))
+        .find(PageReference(pages: [231], requestedCount: 1), question: "page 231",
+              tab: try FixtureTabs.drive(), lastUsed: nil, preferred: FixtureTabs.worksheet, progress: rec.callback)
+    #expect(outcome == .failed(message: "Downloads are disabled for “Worksheet 5.2.pdf”. Open the PDF and ask again so I can scroll through it."))
+    #expect(await viewer.capturedIndices.isEmpty)
+    #expect(!rec.steps.contains(.downloadBlocked))
+}
