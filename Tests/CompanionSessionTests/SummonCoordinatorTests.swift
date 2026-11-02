@@ -68,7 +68,7 @@ private func slowProvider() -> FakeLLMProvider {
         let h = Harness(providers: FakeProviders(fallback: provider))
         h.coordinator.summon()
         h.coordinator.bubbleDidSubmit("q")
-        #expect(h.vm.steps.map(\.text) == ["Thinking…"])
+        #expect(h.vm.steps.map(\.text) == ["Reading screen…"])
         await h.coordinator.settle()
         #expect(h.vm.thread.last?.markdown == "abc" && h.vm.thread.last?.isStreaming == false)
         #expect(h.vm.isBusy == false && h.vm.steps.isEmpty)
