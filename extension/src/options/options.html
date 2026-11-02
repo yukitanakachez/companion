@@ -1,1 +1,32 @@
-<!doctype html><title>Companion Bridge</title><script src="options.js"></script>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Companion Bridge</title>
+<style>
+  :root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
+  body { max-width: 34rem; margin: 3rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 1.5rem; }
+  label { display: block; font-weight: 600; margin-bottom: .25rem; }
+  input { box-sizing: border-box; width: 100%; padding: .5rem; font: inherit; }
+  .actions { display: flex; gap: .5rem; margin-top: .75rem; }
+  button { padding: .4rem .9rem; font: inherit; }
+  #status { margin-top: 1.5rem; }
+  #error { margin-top: .5rem; color: #c62828; }
+  #error:empty { display: none; }
+</style>
+</head>
+<body>
+  <h1>Companion Bridge</h1>
+  <label for="token">Pairing token</label>
+  <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="64 hex characters from Companion Settings">
+  <div id="error" role="alert"></div>
+  <div class="actions">
+    <button id="save" type="button">Save</button>
+    <button id="test" type="button">Test connection</button>
+  </div>
+  <p id="status" role="status" aria-live="polite"></p>
+  <script src="options.js"></script>
+</body>
+</html>
