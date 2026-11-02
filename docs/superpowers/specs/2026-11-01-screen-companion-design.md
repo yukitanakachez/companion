@@ -4,7 +4,7 @@
 
 ## 1. Intent
 
-A macOS study companion that is always one keystroke away. You press a hotkey (or click a small idle orb), a bubble appears next to your cursor almost instantly, and it **already knows what you're looking at** — the YouTube video and what was just said, the math problem on a web page, the textbook pages you name — so you just type the question.
+A macOS study companion that is always one keystroke away. You press a hotkey (or click a small idle orb), a bubble appears next to your cursor almost instantly, and and when you press Enter it **reads what you're looking at right then** — the YouTube video and what was just said, the math problem on a web page, the textbook pages you name — so you just type the question, and can still move tabs first.
 
 **Why it exists.** Existing tools (ChatGPT/Claude desktop apps, screenshot-and-paste) fail in two ways the owner cares about:
 
@@ -25,7 +25,7 @@ A third differentiator: **provider-agnostic.** Similar products are tied to one 
 |---|---|
 | Hotkey → bubble visible and accepting keystrokes | **< 0.8 s hard limit; target < 0.1 s** |
 | Any user action → something visibly changes | < 0.1 s (never a frozen or blank bubble) |
-| Enter → first answer token, simple question, fast model | ≈ 1–1.5 s |
+| Enter → first answer token, simple question, fast model | ≈ 1–1.5 s, including the screen capture that now starts at Enter (waited for up to 500 ms) |
 | Hard math (strong model), page finding, viewer scrolling | Several seconds allowed, **always with live progress steps** |
 
 **v1 goals**
@@ -45,7 +45,7 @@ A third differentiator: **provider-agnostic.** Similar products are tied to one 
 - Capturing anything from a blocklisted app or site.
 - Touching Notion without an explicit request.
 - Silently answering about the wrong pages or wrong context — the user must always be able to see *what* was used (context chips, page thumbnails, "Reading:" line).
-- Always-on screen watching. Capture happens only on summon.
+- Always-on screen watching. The screen is captured only when a question is sent or a region is selected.
 
 ## 3. Constraints
 
@@ -91,27 +91,33 @@ A third differentiator: **provider-agnostic.** Similar products are tied to one 
 ### 5.1 The summon sequence (where the speed comes from)
 
 1. **Hotkey (t=0).** The bubble panel is created at launch and kept hidden; summoning only positions and shows it, and gives its text field keyboard focus without activating the app (so the front app stays "front" for capture). Target < 0.1 s.
-2. **In parallel, while the user types:**
-   - Identify front app (bundle id) and window; run the **PrivacyGate** first. If blocked, capture nothing and show a "context off for this app" chip.
+2. **While the user types:** nothing is captured, gathered or outlined. Startup checks run and the HTTPS connection to the default routed model is pre-warmed (the context kind isn't known yet). The user can move to another tab or app; the panel is non-activating, so whatever they move to stays frontmost.
+3. **Enter (every question, follow-ups included).** A fresh front-window capture starts, and a live `Reading screen…` step shows so the bubble is never blank. The capture does the following in parallel:
+   - Identify front app (bundle id) and window; run the **PrivacyGate** first. If blocked, capture nothing and show a "context off for this app" chip; only that notice is sent.
    - Capture the front window image via ScreenCaptureKit with a filter that excludes the app's own windows; downscale (~1500 px long edge).
    - Read accessibility text: app name, window title, selected text, focused element text.
    - If the front app is a known Chromium browser, read the **already-cached** context for its active tab from `BrowserContextCache` (pushed earlier by the extension — no round-trip on the hot path).
-   - Pre-warm the HTTPS connection to the routed provider.
-   - Each piece appears as a removable **chip** as it lands.
-3. **Enter.** Detect page references in the question (§5.5). If none: assemble context, route, stream. If present: run PageFinder with live steps, then stream.
+   - Each piece appears as a removable **chip** as it lands, showing what was used. The capture glow flashes when the window frame lands.
+4. **After the capture, or after 500 ms with whatever has landed** (later pieces are dropped, so the chips stay true to what was sent). Route the model, then detect page references in the question (§5.5). If none: assemble context and stream. If present: run PageFinder, using the tab from this capture, with live steps, then stream.
 
-Instrument every step (hotkey → panel visible → first keystroke accepted → context ready → first token) and log timings; the success test depends on these numbers.
+**Exceptions.**
+- *Region:* selecting a region captures immediately (§5.3). That region is the context for the next question and for follow-ups while this bubble stays open, with no new capture. A new region replaces it. Closing the bubble, or removing the region's chip, goes back to capture on send.
+- *Pop-out:* while the pop-out window is key, Companion can itself be frontmost. A capture that reports Companion, or no front app, keeps the previous context rather than replacing it with an empty one.
+- *Removed chips:* a chip the user removes excludes that kind of piece from later captures until the bubble closes or New Chat. There is no pre-send preview. Selecting a new region is an explicit request, so it brings region images back.
+
+Instrument every step (hotkey → panel visible → first keystroke accepted, then submit → context first → context complete → first token) and log timings; the success test depends on these numbers. Submit → first token includes capture time.
 
 ### 5.2 Bubble UI (approved mockup: `.superpowers/brainstorm/.../bubble-flow.html`)
 
-- Opens near the cursor, then **nudges itself off the captured region's focal area** (e.g. off the video player) so it doesn't cover what's being asked about.
-- Top row: context chips (window thumbnail, `▶ 12:41 · Ch. 3`, `transcript 9:41–12:41`, `pp. 231–232`), each removable with ✕.
+- Opens near the cursor. A selected region is avoided so the bubble doesn't cover it; nothing has been captured when a normal summon opens, so there's nothing else to avoid.
+- **Movable:** drag the bubble by any empty part (the chrome around the content, the chip row's gaps, the footer). Dragging in the input or the answer still selects text, and buttons still work. Dragging doesn't activate the app or change the front app. Once dragged, its top-left corner holds while the answer grows and through follow-ups, kept inside the visible frame of the display it is on. The next fresh summon opens at the cursor again; the position isn't saved.
+- Top row: context chips (window thumbnail, `▶ 12:41 · Ch. 3`, `transcript 9:41–12:41`, `pp. 231–232`), each removable with ✕. Chips appear when a question is sent (§5.1), or at once for a selected region.
 - Input; footer shows current model (Tab cycles models for this question) and Hint mode (⌘H).
 - Answers stream as Markdown with KaTeX math. Bubble grows to a max size then scrolls; **↗ pop out** moves the thread into a larger draggable window.
 - Esc closes; ⌘N starts a new chat.
-- **Conversation continuation:** if summoned again within **10 minutes** of the last interaction, the previous thread resumes and the newly captured context is appended as a new turn's context. Otherwise a fresh thread starts.
+- **Conversation continuation:** if summoned again within **10 minutes** of the last interaction, the previous thread resumes and each new question's capture becomes that turn's context. Otherwise a fresh thread starts.
 - **Idle orb:** small always-on-top orb, draggable, hideable in settings; click = summon. Its **look** follows `design/glow-prototype.html`; the prototype's ~1 s glide-into-a-bar opening is **not** used, because typing must be possible in < 0.1 s — the bubble opens instantly at the cursor as in the approved mockup. Later a pet character can "own" the orb and bubble.
-- **Capture glow:** on summon, a brief glow outlines the window (or region) being captured, so the user sees what was read. Implemented as a transparent, click-through overlay window that never takes focus and is excluded from capture (it's the app's own window). Purely visual; must not delay the bubble.
+- **Capture glow:** when a question's capture lands (at selection for a region), a brief glow outlines the window (or region) being captured, so the user sees what was read. Implemented as a transparent, click-through overlay window that never takes focus and is excluded from capture (it's the app's own window). Purely visual; must not delay the bubble.
 - **Hotkeys:** main = ⌥Space (matches the prototypes), region capture = a second configurable hotkey (crosshair drag). Both rebindable. Note: ⌥Space is also ChatGPT's desktop default — the settings screen must make rebinding obvious.
 
 ### 5.3 Context readers
@@ -170,8 +176,8 @@ The user does not need to see the viewer move in the normal path — only correc
 - The app runs a WebSocket server bound to **127.0.0.1** only.
 - **Pairing:** the app shows a one-time token; the user pastes it into the extension's options page once. Every connection must present it. (Avoids browser-specific native-messaging host registration, which is undocumented for Dia.)
 - **Push model:** content scripts send context updates to the service worker, which forwards them to the app; the app caches the latest context per tab and knows the active tab. This keeps the hot path free of extension round-trips and tolerates service-worker sleep (an open WebSocket with periodic traffic keeps the worker alive in current Chromium; if it sleeps, the next content-script event wakes it and it reconnects).
-- **What "only on summon" means (designer's call):** *nothing leaves the Mac and nothing reaches a model until the user summons.* To meet the speed budget, the extension keeps the **active tab's** context ready locally in memory (YouTube transcript fetched once per video; page text/LaTeX refreshed on navigation and debounced scroll). The extension applies the site blocklist itself before reading anything, so blocked sites are never read even locally. Pre-loaded context is kept in memory for open tabs (so switching back to a video is instant) and dropped when a tab closes, its URL changes, or its site becomes blocked. A Notion page open in the browser is ordinary screen content; the "Notion only on request" rule governs the Notion *integration* (search/save via MCP), not seeing a Notion page you are looking at.
-- **Fallback:** if the cache is empty for the active tab, the app requests context on summon while the user types (still within budget), then falls back to screenshot + AX if the extension doesn't answer in ~300 ms.
+- **What "only on send" means (designer's call):** *nothing leaves the Mac and nothing reaches a model until the user sends a question.* To meet the speed budget, the extension keeps the **active tab's** context ready locally in memory (YouTube transcript fetched once per video; page text/LaTeX refreshed on navigation and debounced scroll). The extension applies the site blocklist itself before reading anything, so blocked sites are never read even locally. Pre-loaded context is kept in memory for open tabs (so switching back to a video is instant) and dropped when a tab closes, its URL changes, or its site becomes blocked. A Notion page open in the browser is ordinary screen content; the "Notion only on request" rule governs the Notion *integration* (search/save via MCP), not seeing a Notion page you are looking at.
+- **Fallback:** if the cache is empty for the active tab, the app requests context during the capture at Enter (still within budget), then falls back to screenshot + AX if the extension doesn't answer in ~300 ms.
 - **Request/response messages** (slow path only): `fetchDrivePdf`, `scrollViewerAndCapture`, `getFullTranscript`.
 
 ### 5.7 Settings & storage
@@ -191,7 +197,8 @@ The user does not need to see the viewer move in the normal path — only correc
 | Brain location | Approach A (app is the brain) | Owner |
 | Models | Claude native + OpenAI-compatible adapters in v1 | Owner |
 | Routing | Per-context default + one-key override | Owner |
-| Capture | Front window by default + region hotkey; only on summon | Owner |
+| Capture | Front window by default + region hotkey; only when a question is sent or a region is selected (changed after first real use: the owner opens the bubble, then moves tabs) | Owner |
+| Bubble position | Draggable; sticks until the bubble closes; next summon opens at the cursor | Owner |
 | UI | Cursor bubble, smart placement, grow-then-scroll, pop-out; optional idle orb | Owner |
 | YouTube context | Last ~3 min of transcript + frame + title/chapter | Owner approved proposal |
 | PDFs | Google Classroom/Drive via extension download (usually allowed → main path); viewer-scroll fallback if blocked, built last; Preview = screenshot only | Owner |
@@ -205,7 +212,7 @@ The user does not need to see the viewer move in the normal path — only correc
 | Success | 2 weeks daily use; < 0.8 s hotkey→typing | Owner |
 | Coding | Out of v1, kept on the future list | Owner |
 
-**Calls made by the designer (owner should check):** fast/strong model defaults per context; ~10-page cap; WebSocket + pasted token for the bridge; in-memory-only conversations; Notion save target = named page or a settings-chosen inbox page; region hotkey binding; unknown-site capture rule (§5.3); extension pre-loads the active tab locally but sends nothing until summon (§5.6); reuse of the last textbook when the page has none (§5.5); session PDF cache (§5.5).
+**Calls made by the designer (owner should check):** fast/strong model defaults per context; ~10-page cap; WebSocket + pasted token for the bridge; in-memory-only conversations; Notion save target = named page or a settings-chosen inbox page; region hotkey binding; unknown-site capture rule (§5.3); extension pre-loads the active tab locally but sends nothing until a question is sent (§5.6); reuse of the last textbook when the page has none (§5.5); session PDF cache (§5.5).
 
 ## 7. Error handling principles
 
