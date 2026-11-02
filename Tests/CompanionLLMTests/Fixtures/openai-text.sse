@@ -1,0 +1,12 @@
+data: {"id":"c1","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"c1","choices":[{"index":0,"delta":{"content":"The roots"},"finish_reason":null}]}
+
+data: {"id":"c1","choices":[{"index":0,"delta":{"content":" are 2 and 3."},"finish_reason":null}]}
+
+data: {"id":"c1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"c1","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":6,"total_tokens":26}}
+
+data: [DONE]
+
