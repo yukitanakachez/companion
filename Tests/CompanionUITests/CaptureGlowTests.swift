@@ -7,7 +7,9 @@ extension WindowTests { @MainActor @Suite struct CaptureGlowTests {
     @Test func flashShowsClickThroughGlowThenCloses() async throws {
         TestApp.ensure(); let keyBefore = NSApp.keyWindow
         let t = ContinuousClock().measure { CaptureGlow.flash(r1) }; let p = try #require(CaptureGlow.activePanel)
-        #expect(t < .milliseconds(20) && p.frame == r1.insetBy(dx: -6, dy: -6) && p.ignoresMouseEvents && !p.canBecomeKey && NSApp.keyWindow === keyBefore)
+        // The first panel in a process costs about 28 ms, later ones 4-10 ms, so a tighter limit depends on test order.
+        // 100 ms is the spec's budget for a visible change.
+        #expect(t < .milliseconds(100) && p.frame == r1.insetBy(dx: -6, dy: -6) && p.ignoresMouseEvents && !p.canBecomeKey && NSApp.keyWindow === keyBefore)
         try await Task.sleep(for: .milliseconds(900)); #expect(CaptureGlow.activePanel == nil && !p.isVisible)
         CaptureGlow.flash(.zero); #expect(CaptureGlow.activePanel == nil)   // empty rect ignored
         #expect(CaptureGlow.fadeIn == 0.08 && CaptureGlow.hold == 0.25 && CaptureGlow.fadeOut == 0.3)
