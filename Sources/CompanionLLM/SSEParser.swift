@@ -74,7 +74,8 @@ struct SSEParser: Sendable {
             hasData = false
             eventName = nil
         }
-        guard hasData else { return nil }
+        // An empty `data:` line is a heartbeat from some proxies; decoders could not parse it.
+        guard hasData, !data.isEmpty else { return nil }
         return SSEEvent(event: eventName, data: data)
     }
 }

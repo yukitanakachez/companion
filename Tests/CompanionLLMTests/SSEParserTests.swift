@@ -30,6 +30,9 @@ struct SSEParserTests {
     @Test func blankLineWithoutDataDispatchesNothingAndResetsName() {
         #expect(parse(["event: ping\n\ndata: y\n\n"]) == [SSEEvent(event: nil, data: "y")])
     }
+    @Test func emptyDataHeartbeatDispatchesNothing() {
+        #expect(parse(["data: \n\ndata:\n\ndata: y\n\n"]) == [SSEEvent(event: nil, data: "y")])
+    }
     @Test func multibyteUTF8SplitAcrossChunks() {
         let bytes = Array("data: café ∑\n\n".utf8)
         var p = SSEParser()
