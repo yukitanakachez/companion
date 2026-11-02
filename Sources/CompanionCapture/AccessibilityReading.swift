@@ -28,6 +28,16 @@ enum AXTextPolicy {
     }
 }
 
+enum FocusedTextPolicy {
+    /// What is on screen, when the element can say. Otherwise the newest characters of its full value:
+    /// in Terminal or an editor the oldest scrollback is the least useful part.
+    static func choose(visible: String?, value: () -> String?) -> String? {
+        if let visible, !visible.isEmpty { return visible }
+        guard let full = value(), !full.isEmpty else { return nil }
+        return String(full.suffix(CaptureConstants.focusedTextCap))
+    }
+}
+
 enum BrowserURLParser {
     /// Browsers hide the scheme in the address bar, so a bare host is accepted. Search text is not a URL.
     static func url(fromAddressField text: String) -> URL? {

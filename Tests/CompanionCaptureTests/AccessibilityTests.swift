@@ -73,3 +73,19 @@ private final class FakeNode {
     print("focused:", await r.focusedText(pid: front.pid) as Any)
     print("url:", await r.browserURL(pid: front.pid) as Any)
 }
+
+@Test func focusedTextPrefersWhatIsOnScreen() {
+    #expect(FocusedTextPolicy.choose(visible: "error on screen", value: { "old scrollback" }) == "error on screen")
+}
+@Test func focusedTextFallbackKeepsTheNewestCharacters() {
+    let value = String(repeating: "o", count: 9_000) + String(repeating: "n", count: 8_000)
+    #expect(FocusedTextPolicy.choose(visible: nil, value: { value }) == String(repeating: "n", count: 8_000))
+    #expect(FocusedTextPolicy.choose(visible: "", value: { "short" }) == "short")
+    #expect(FocusedTextPolicy.choose(visible: nil, value: { "" }) == nil)
+    #expect(FocusedTextPolicy.choose(visible: nil, value: { nil }) == nil)
+}
+@Test func focusedTextSkipsTheFullValueWhenVisibleTextExists() {
+    var asked = false
+    _ = FocusedTextPolicy.choose(visible: "v", value: { asked = true; return nil })
+    #expect(!asked)
+}

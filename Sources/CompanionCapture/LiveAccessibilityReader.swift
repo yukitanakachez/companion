@@ -37,7 +37,7 @@ struct LiveAccessibilityReader: AccessibilityReading {
 
     func focusedText(pid: Int32) async -> String? {
         guard let focused = readableFocusedElement(pid: pid) else { return nil }
-        return nonEmpty(string(focused, kAXValueAttribute))
+        return FocusedTextPolicy.choose(visible: visibleText(focused), value: { string(focused, kAXValueAttribute) })
     }
 
     func browserURL(pid: Int32) async -> URL? {
@@ -115,6 +115,15 @@ struct LiveAccessibilityReader: AccessibilityReading {
 
     private func element(_ parent: AXUIElement, _ attribute: String) -> AXUIElement? {
         copy(parent, attribute).flatMap { Self.asElement($0) }
+    }
+
+    /// Reads only the on-screen range, so a huge scrollback doesn't trip the messaging timeout.
+    private func visibleText(_ element: AXUIElement) -> String? {
+        guard let range = axValue(element, kAXVisibleCharacterRangeAttribute) else { return nil }
+        var text: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            element, kAXStringForRangeParameterizedAttribute as CFString, range, &text)
+        return result == .success ? text as? String : nil
     }
 
     private func axValue(_ element: AXUIElement, _ attribute: String) -> AXValue? {
