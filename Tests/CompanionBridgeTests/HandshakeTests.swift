@@ -46,6 +46,28 @@ import Testing
         #expect(secrets.secret(for: SecretKey.bridgeToken)?.count == 64)
         await server.stop()
     }
+    @Test func concurrentStartsShareOneListener() async throws {
+        let server = BridgeServer(secrets: FakeSecretStore(), blocklist: .starter, ports: [0], appVersion: "t")
+        async let a = server.start()
+        async let b = server.start()
+        let (first, second) = try await (a, b)
+        #expect(first == second)
+        await server.stop()
+    }
+    @Test func stopDuringStartLeavesTheServerStopped() async throws {
+        var raced = 0
+        for _ in 0..<20 {
+            let server = BridgeServer(secrets: FakeSecretStore(), blocklist: .starter, ports: [0], appVersion: "t")
+            let starting = Task { try? await server.start() }
+            while await !server.isStarting, await server.status().port == nil { await Task.yield() }
+            if await server.isStarting { raced += 1 }
+            await server.stop()
+            _ = await starting.value
+            #expect(await server.status().port == nil)
+            await server.stop()
+        }
+        #expect(raced > 0)
+    }
     @Test func skipsPortInUse() async throws {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)

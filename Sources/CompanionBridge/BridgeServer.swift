@@ -18,6 +18,7 @@ public actor BridgeServer {
     private var port: UInt16?
     private var accepting = false
     private var pingTask: Task<Void, Never>?
+    private var starting: Task<UInt16, any Error>?
     private var nextConnection: UInt64 = 0
     private var sessions: [ConnectionID: BridgeSession] = [:]
     private var authenticated: [Authenticated] = []
@@ -41,13 +42,28 @@ public actor BridgeServer {
         self.timings = timings
     }
 
+    /// True while a `start()` is binding its listener.
+    var isStarting: Bool { accepting && port == nil }
+
     public func start() async throws -> UInt16 {
         if let port { return port }
+        if let starting { return try await starting.value }
         _ = try BridgePairing.token(in: secrets)
         accepting = true
+        let task = Task { try await self.bindListener() }
+        starting = task
+        defer { starting = nil }
+        return try await task.value
+    }
+
+    private func bindListener() async throws -> UInt16 {
         do {
             let bound = try await BridgeListener.bind(ports: ports, queue: queue) { [weak self] connection in
                 Task { await self?.accept(connection) }
+            }
+            guard accepting else {
+                bound.listener.cancel()   // `stop()` ran while binding.
+                throw BridgeError(code: .internal, message: "Bridge stopped while starting")
             }
             listener = bound.listener
             port = bound.port

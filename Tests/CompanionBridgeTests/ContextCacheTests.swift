@@ -64,6 +64,24 @@ private let chrome = ConnectionID(raw: 2)
         await cache.connectionClosed(chrome)
         #expect(await cache.activeTabContext() == nil)
     }
+    @Test func staleStoreDoesNotMoveTheActiveTab() async throws {     // Review Focus 1
+        let cache = try await diaOnYouTube()
+        let youtube = try #require(await cache.activeTabContext())
+        await cache.apply(try activate(21), from: dia)
+        await cache.store(youtube, from: dia)                          // an answer that raced the tab switch
+        #expect(await cache.activeTabContext() == nil)
+        await cache.apply(try fixtureMessage("ext-tabContext-math.json"), from: dia)
+        #expect(await cache.activeTabContext()?.tabId == 21)
+    }
+    @Test func closedConnectionCannotComeBack() async throws {
+        let cache = ContextCache()
+        await cache.connectionClosed(chrome)
+        await cache.store(try fixtureContext("ext-tabContext-math.json"), from: chrome)
+        await cache.apply(try activate(21), from: chrome)
+        #expect(await cache.activeConnection() == nil)
+        #expect(await cache.activeTabContext() == nil)
+        #expect(await cache.connection(forTab: 21) == nil)
+    }
     @Test func storeActivatesWhenNothingIsActive() async throws {
         let cache = ContextCache()
         await cache.store(try fixtureContext("ext-tabContext-math.json"), from: chrome)

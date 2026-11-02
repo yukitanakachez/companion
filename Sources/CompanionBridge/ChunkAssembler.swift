@@ -33,8 +33,8 @@ struct ChunkAssembler: Sendable {
     func assemble() throws -> Data {
         if chunks.isEmpty { return Data() }
         guard let lastSeq else { throw violation("Transfer ended without a last chunk") }
-        guard chunks.count == lastSeq + 1 else {
-            throw violation("Transfer has \(chunks.count) chunks, expected \(lastSeq + 1)")
+        guard chunks.count - 1 == lastSeq else {
+            throw violation("Transfer has \(chunks.count) chunks, but its last seq is \(lastSeq)")
         }
         var output = Data(capacity: chunks.values.reduce(0) { $0 + $1.count })
         for seq in 0...lastSeq {

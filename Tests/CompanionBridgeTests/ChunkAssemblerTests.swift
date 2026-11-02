@@ -51,5 +51,11 @@ import Testing
         do { try a.add(h(0, id: "r-8"), Data([1])); Issue.record("expected throw") } catch { #expect((error as? BridgeError)?.code == .internal) }
         do { try a.add(h(0), Data(count: BridgeConstants.maxChunkBytes + 1)); Issue.record("expected throw") } catch { #expect((error as? BridgeError)?.code == .internal) }
     }
+    @Test func hugeLastSeqThrowsInsteadOfTrapping() async throws {
+        var a = ChunkAssembler(requestID: "r-7")
+        try a.add(h(Int.max, last: true), Data([1]))
+        let done = a
+        await expectBridgeError(.internal) { _ = try done.assemble() }
+    }
     @Test func noFramesAssemblesToEmpty() throws { #expect(try ChunkAssembler(requestID: "r-7").assemble().isEmpty) }
 }

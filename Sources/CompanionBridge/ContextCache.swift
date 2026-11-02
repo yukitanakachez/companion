@@ -16,10 +16,13 @@ actor ContextCache {
     private var snapshots: [Key: TabContext] = [:]
     private var activations: [ConnectionID: (tabId: Int, order: UInt64)] = [:]
     private var order: UInt64 = 0
+    /// Connection ids are never reused. A late message or answer from a closed one must not bring it back.
+    private var closed: Set<ConnectionID> = []
 
     init() {}
 
     func apply(_ message: ExtensionToApp, from connection: ConnectionID) {
+        guard !closed.contains(connection) else { return }
         switch message {
         case .tabActivated(let activated):
             activations[connection] = (activated.tabId, nextOrder())
@@ -41,19 +44,18 @@ actor ContextCache {
         }
     }
 
-    /// Stores a `getTabContext` answer.
+    /// Stores a `getTabContext` answer. It activates its tab only when nothing is active: an answer can
+    /// race a tab switch, and only `tabActivated` may move an existing activation.
     func store(_ context: TabContext, from connection: ConnectionID) {
+        guard !closed.contains(connection) else { return }
         snapshots[Key(connection: connection, tabId: context.tabId)] = context
-        if let active = activeConnection() {
-            if active == connection, let current = activations[connection] {
-                activations[connection] = (context.tabId, current.order)
-            }
-        } else {
+        if activeConnection() == nil {
             activations[connection] = (context.tabId, nextOrder())
         }
     }
 
     func connectionClosed(_ connection: ConnectionID) {
+        closed.insert(connection)
         snapshots = snapshots.filter { $0.key.connection != connection }
         activations[connection] = nil
     }
