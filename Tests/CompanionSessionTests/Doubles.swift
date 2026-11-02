@@ -1,6 +1,7 @@
 import AppKit
 import CompanionCapture
 import CompanionCore
+import CompanionPageFinder
 @testable import CompanionSession
 import CompanionTestSupport
 import CompanionUI
@@ -117,6 +118,36 @@ func ctx(kind: ContextKind = .genericWindow, frame: CGRect? = CGRect(x: 100, y: 
                     privacy: privacy, kind: kind, items: items, isComplete: complete)
 }
 
+actor FakePageFinder: PageFinding {
+    private let outcome: PageFinderOutcome
+    private let steps: [PageFinderStep]
+    private let hangFirstCall: Bool
+    private var hanging: CheckedContinuation<Void, Never>?
+    private(set) var calls: [(reference: PageReference, tab: TabContext?, lastUsed: DriveFileRef?, preferred: DriveFileRef?)] = []
+
+    /// `hangFirstCall` ignores cancellation, like a `fetchDrivePDF` pending for up to 120 s.
+    init(outcome: PageFinderOutcome, steps: [PageFinderStep] = [], hangFirstCall: Bool = false) {
+        self.outcome = outcome
+        self.steps = steps
+        self.hangFirstCall = hangFirstCall
+    }
+
+    func find(_ reference: PageReference, question: String, tab: TabContext?, lastUsed: DriveFileRef?,
+              preferred: DriveFileRef?, progress: @escaping @Sendable (PageFinderStep) -> Void) async -> PageFinderOutcome {
+        calls.append((reference, tab, lastUsed, preferred))
+        for step in steps { progress(step) }
+        if hangFirstCall, calls.count == 1 {
+            await withCheckedContinuation { hanging = $0 }
+        }
+        return outcome
+    }
+
+    func release() {
+        hanging?.resume()
+        hanging = nil
+    }
+}
+
 @MainActor final class Harness {
     let vm = BubbleViewModel()
     let presenter = FakePresenter()
@@ -135,7 +166,8 @@ func ctx(kind: ContextKind = .genericWindow, frame: CGRect? = CGRect(x: 100, y: 
     let glow = FakeGlow()
 
     init(providers: FakeProviders = FakeProviders(), permissions: FakePermissions = FakePermissions(),
-         gatherer: FakeGatherer = FakeGatherer(emissions: [])) {
+         gatherer: FakeGatherer = FakeGatherer(emissions: []),
+         pageFinder: FakePageFinder? = nil, browser: FakeBrowserContextProvider? = nil) {
         self.providers = providers
         self.permissions = permissions
         self.gatherer = gatherer
@@ -146,6 +178,8 @@ func ctx(kind: ContextKind = .genericWindow, frame: CGRect? = CGRect(x: 100, y: 
         coordinator.gatherer = gatherer
         coordinator.regionSelector = selector
         coordinator.glow = glow
+        if let pageFinder { coordinator.pageFinder = pageFinder }
+        if let browser { coordinator.browser = browser }
     }
 
     func submit(_ question: String) async {

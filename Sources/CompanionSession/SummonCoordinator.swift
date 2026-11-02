@@ -51,6 +51,12 @@ import Foundation
     private var prewarmTasks: [Task<Void, Never>] = []
     private var workTask: Task<Void, Never>?
 
+    var pageFinder: (any PageFinding)?
+    var browser: (any BrowserContextProviding)?
+    /// Set from the page-finder extension; read by tests.
+    var lastUsedDocument: DriveFileRef?
+    var lastPageQuestion: String?
+
     var gatherer: (any ContextGathering)?
     var regionSelector: any RegionSelecting = LiveRegionSelector()
     var glow: any GlowFlashing = LiveCaptureGlow()
@@ -214,6 +220,7 @@ import Foundation
         viewModel.setDocumentChoice(nil)
         viewModel.showError(nil)
         failed = nil
+        lastPageQuestion = nil
         settingsTarget = .app
     }
 
@@ -280,7 +287,12 @@ import Foundation
         Task { @MainActor [viewModel] in viewModel.inputText = question }
     }
 
-    private func startRun(question: String) {
+    private enum FinderUse {
+        case skip
+        case run(preferred: DriveFileRef?)
+    }
+
+    private func startRun(question: String, finder: FinderUse = .run(preferred: nil)) {
         viewModel.setBusy(true)
         var active = ActiveRun(question: question)
         let thinking = StepItem(text: "Thinking…", state: .active)
@@ -288,11 +300,13 @@ import Foundation
         viewModel.setSteps([thinking])
         run = active
         let id = active.id
-        workTask = Task { await perform(id: id) }
+        workTask = Task { await perform(id: id, question: question, finder: finder) }
     }
 
-    private func perform(id: UUID) async {
+    private func perform(id: UUID, question: String, finder: FinderUse) async {
         await waitForGather(id: id)
+        guard isCurrent(id) else { return }
+        if case .run(let preferred) = finder, await runPageFlow(id: id, question: question, preferred: preferred) { return }
         guard isCurrent(id) else { return }
         await streamAnswer(id: id, model: chosenModel())
     }
@@ -303,6 +317,11 @@ import Foundation
     func streamAnswer(id: UUID, model: ModelRef) async {
         guard let question = run?.question else { return }
         run?.model = model
+        if !viewModel.steps.contains(where: { $0.state == .active }) {
+            let thinking = StepItem(text: "Thinking…", state: .active)
+            run?.thinkingStepID = thinking.id
+            viewModel.setSteps(viewModel.steps + [thinking])
+        }
         viewModel.setModelName(model.displayName)
         let prompt = PromptBuilder().build(question: question, context: context, history: conversation.messages,
                                            hintMode: viewModel.hintMode)
@@ -371,6 +390,15 @@ import Foundation
         viewModel.setBusy(false)
     }
 
+    /// A reply the app writes itself: no model call, no stored turn.
+    func answerWithoutModel(_ text: String) {
+        let id = viewModel.beginAssistantMessage()
+        viewModel.appendDelta(text, to: id)
+        viewModel.finishAssistantMessage(id)
+        run = nil
+        viewModel.setBusy(false)
+    }
+
     private func cancelRun(keepPartial: Bool) {
         workTask?.cancel()
         workTask = nil
@@ -398,6 +426,7 @@ import Foundation
         removedItemIDs.insert(id)
         if let piece = context?.items.first(where: { $0.id == id })?.piece, let kind = PieceCase(piece) {
             removedPieces.insert(kind)
+            if kind == .pdfPages { viewModel.setPageThumbnails([]) }
         }
         applyContext(context?.removingItem(id))
     }
@@ -434,10 +463,16 @@ import Foundation
         viewModel.showError(nil)
         self.failed = nil
         if let override { viewModel.setModelName(override.displayName) }
-        startRun(question: failed.question)
+        startRun(question: failed.question, finder: .skip)   // the pages are already attached
     }
 
-    public func bubbleDidSelectDocument(_ file: DriveFileRef) {}
+    public func bubbleDidSelectDocument(_ file: DriveFileRef) {
+        guard let question = lastPageQuestion else { return }
+        cancelRun(keepPartial: true)
+        viewModel.showError(nil)
+        failed = nil
+        startRun(question: question, finder: .run(preferred: file))
+    }
 
     // MARK: Helpers
 
