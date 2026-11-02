@@ -42,6 +42,9 @@ export function readPlayerData(win: Window, videoId: string): PlayerData | null 
 
 /** MAIN world. Answers requests only; it never initiates a message. */
 export function installPlayerDataResponder(win: Window): void {
+  const flagged = win as unknown as { __companionPlayerResponder?: boolean };
+  if (flagged.__companionPlayerResponder) return;
+  flagged.__companionPlayerResponder = true;
   win.addEventListener("message", (ev: MessageEvent) => {
     if (ev.source && ev.source !== win) return;
     const m = ev.data;

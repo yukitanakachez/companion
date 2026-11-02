@@ -19,6 +19,7 @@ export const TRANSCRIPT_SELECTORS = {
   closePanel: 'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-searchable-transcript"] #visibility-button button',
 };
 const PANEL_TIMEOUT_MS = 5000;
+const PANEL_SETTLE_MS = 1000;
 
 const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
 
@@ -57,10 +58,20 @@ export function scrapeTranscriptPanel(doc: Document): TranscriptSegment[] {
   return rows.map((r, i) => ({ start: r.start, duration: i + 1 < rows.length ? rows[i + 1].start - r.start : 0, text: r.text }));
 }
 
-export function openPanelAndScrape(doc: Document, timeoutMs = PANEL_TIMEOUT_MS): Promise<TranscriptSegment[]> {
+/** The rows last handed out per page, so a later video can't be given them again. */
+const lastReturned = new WeakMap<Document, string>();
+
+/**
+ * Rows found in the DOM may be left over from the previous video, since a single-page navigation can
+ * leave the panel mounted. Rows this function already returned are never accepted again; other rows
+ * present on entry are accepted only if they stay unchanged for `settleMs`.
+ */
+export function openPanelAndScrape(doc: Document, timeoutMs = PANEL_TIMEOUT_MS, settleMs = PANEL_SETTLE_MS): Promise<TranscriptSegment[]> {
   const S = TRANSCRIPT_SELECTORS;
-  const present = scrapeTranscriptPanel(doc);
-  if (present.length > 0) return Promise.resolve(present);
+  const keyOf = (segments: TranscriptSegment[]) => JSON.stringify(segments);
+  const known = lastReturned.get(doc);
+  const onEntry = scrapeTranscriptPanel(doc);
+  const leftover = onEntry.length > 0 ? keyOf(onEntry) : null;
 
   return new Promise((resolve) => {
     let opened = false;
@@ -74,19 +85,29 @@ export function openPanelAndScrape(doc: Document, timeoutMs = PANEL_TIMEOUT_MS):
     const finish = (segments: TranscriptSegment[]) => {
       observer.disconnect();
       clearTimeout(timer);
+      clearTimeout(settle);
       if (opened) doc.querySelector<HTMLElement>(S.closePanel)?.click();
+      if (segments.length > 0) lastReturned.set(doc, keyOf(segments));
       resolve(segments);
     };
     const check = () => {
-      clickShow();
       const segments = scrapeTranscriptPanel(doc);
-      if (segments.length > 0) finish(segments);
+      const key = keyOf(segments);
+      if (segments.length === 0 || key === known) clickShow();
+      else if (key !== leftover) finish(segments);
     };
     const Observer = (doc.defaultView as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver;
     const observer = new Observer(check);
     const timer = setTimeout(() => finish([]), timeoutMs);
+    const settle = setTimeout(() => {
+      const segments = scrapeTranscriptPanel(doc);
+      const key = keyOf(segments);
+      if (segments.length > 0 && key === leftover && key !== known) finish(segments);
+    }, settleMs);
     observer.observe(doc.documentElement, { childList: true, subtree: true });
-    if (!doc.querySelector(S.showButton)) doc.querySelector<HTMLElement>(S.expandDescription)?.click();
+    if ((leftover === null || leftover === known) && !doc.querySelector(S.showButton)) {
+      doc.querySelector<HTMLElement>(S.expandDescription)?.click();
+    }
     check();
   });
 }

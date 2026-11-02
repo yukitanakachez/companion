@@ -1,4 +1,5 @@
 import { liveContentDeps } from "./content-deps";
 import { startPageScript } from "./page";
+import { replaceInstance } from "./single-instance";
 
-startPageScript(liveContentDeps());
+replaceInstance(window, "page", () => startPageScript(liveContentDeps()));

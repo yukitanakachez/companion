@@ -126,3 +126,46 @@ describe("openPanelAndScrape", () => {
     expect(expanded).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("openPanelAndScrape with rows already in the DOM", () => {
+  const S = TRANSCRIPT_SELECTORS;
+  const row = (t: string, text: string) => `<ytd-transcript-segment-renderer><div class="segment-timestamp">${t}</div><div class="segment-text">${text}</div></ytd-transcript-segment-renderer>`;
+  const shell = (rows: string) => domFrom(`<!doctype html><body><div id="host">${rows}</div><ytd-video-description-transcript-section-renderer><button>Show</button></ytd-video-description-transcript-section-renderer></body>`, U).window.document;
+  afterEach(() => vi.useRealTimers());
+
+  it("waits for leftover rows to be replaced rather than returning them at once", async () => {
+    const doc = shell(row("0:00", "video A"));
+    const p = openPanelAndScrape(doc, 5000, 200);
+    doc.getElementById("host")!.innerHTML = row("0:00", "video B");
+    expect((await p)[0].text).toBe("video B");
+  });
+  it("accepts rows that stay unchanged through the settle period", async () => {
+    vi.useFakeTimers();
+    const doc = shell(row("0:00", "mine"));
+    let out: unknown;
+    void openPanelAndScrape(doc, 5000, 1000).then((r) => { out = r; });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(out).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect((out as any[])[0].text).toBe("mine");
+  });
+  it("never returns the rows it returned for the previous video", async () => {
+    vi.useFakeTimers();
+    const doc = shell(row("0:00", "video A"));
+    const first = openPanelAndScrape(doc, 5000, 10);
+    await vi.advanceTimersByTimeAsync(10);
+    expect((await first)[0].text).toBe("video A");
+    const second = openPanelAndScrape(doc, 5000, 10);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await second).toEqual([]);
+  });
+  it("rows cleared by navigation lead to clicking Show transcript", async () => {
+    const doc = shell(row("0:00", "video A"));
+    const show = vi.fn(() => { doc.getElementById("host")!.innerHTML = row("0:00", "video B"); });
+    doc.querySelector(S.showButton)!.addEventListener("click", show);
+    const p = openPanelAndScrape(doc, 5000, 500);
+    doc.getElementById("host")!.innerHTML = "";
+    expect((await p)[0].text).toBe("video B");
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+});

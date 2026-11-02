@@ -176,6 +176,15 @@ describe("service worker", () => {
     expect(on(34)[0].target.allFrames).toBe(true);
     expect(on(40)).toEqual([]);
   });
+  it("a browser update or restart doesn't re-inject into open tabs", async () => {
+    const h = harness();
+    h.c.runtime.onInstalled.fire({ reason: "chrome_update" });
+    await flush();
+    expect(h.c.scripting.executeScript).not.toHaveBeenCalled();
+    h.c.runtime.onInstalled.fire({ reason: "update" });
+    await flush();
+    expect(h.c.scripting.executeScript).toHaveBeenCalled();
+  });
   it("a tab refusing injection doesn't stop the others", async () => {
     const h = harness();
     h.c.scripting.executeScript.mockRejectedValueOnce(new Error("Cannot access"));

@@ -154,7 +154,10 @@ export function createServiceWorker(env: SwEnv) {
   api.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && STORAGE_KEYS.pairingToken in changes) void client.restart();
   });
-  api.runtime.onInstalled.addListener(() => void injectIntoOpenTabs());
+  api.runtime.onInstalled.addListener(({ reason }) => {
+    // Only a new extension version leaves tabs without live scripts; a browser update doesn't.
+    if (reason === "install" || reason === "update") void injectIntoOpenTabs();
+  });
 
   return { client, store, tracker, blocklist };
 }
