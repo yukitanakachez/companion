@@ -56,10 +56,7 @@ enum CaptureConstants {
     static let transcriptLookback: Double = 180, axMessagingTimeout: Float = 0.05, minRegionSide: CGFloat = 8
     static let imageTimeout: Duration = .seconds(2), axWalkMaxDuration: Duration = .milliseconds(40)
 }
-enum KnownBrowsers {
-    static let chromium: Set<String>, all: Set<String>   // chromium: dia, Chrome, Arc, Brave, Edge; all: chromium ∪ Safari, Firefox
-    static func isBrowser(_ bundleID: String) -> Bool; static func usesExtension(_ bundleID: String) -> Bool
-}
+// KnownBrowsers comes from CompanionCore (bundleIDs, chromiumBundleIDs, isBrowser, usesExtension) — do not redeclare it.
 enum CaptureError: Error, Sendable, Equatable { case permissionDenied, noCapturableWindow, displayNotFound, encodingFailed }
 enum PrivacyGate {
     static let siteBlockedReason = "This site is on your blocklist"
@@ -105,11 +102,6 @@ extension CapturedContext { var pieces: [ContextPiece]; var notices: [ContextNot
     #expect(ev(dia, browser: true) == .siteUnchecked && ev(dia, browser: true, tab: noURL) == .siteUnchecked)
 }
 @Test func nonBrowserAndUnknownFrontAreAllowed() { #expect(ev(preview, browser: false) == .allowed && ev(nil, browser: false) == .allowed) }
-@Test func knownBrowsers() {
-    #expect(KnownBrowsers.all.count == 7 && KnownBrowsers.chromium.count == 5)
-    #expect(KnownBrowsers.usesExtension("company.thebrowser.dia") && !KnownBrowsers.usesExtension("com.apple.Safari"))
-    #expect(KnownBrowsers.isBrowser("org.mozilla.firefox") && !KnownBrowsers.isBrowser("com.apple.Preview"))
-}
 @Test func specValues() {
     #expect(CaptureConstants.longEdgePixels == 1500 && CaptureConstants.transcriptLookback == 180)
     #expect(CaptureConstants.focusedTextCap == 8_000 && CaptureConstants.axMessagingTimeout == 0.05)

@@ -1,0 +1,47 @@
+name: Companion
+options:
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  Companion:
+    path: .
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+targets:
+  Companion:
+    type: application
+    platform: macOS
+    sources: [App]
+    dependencies:
+      - package: Companion
+        product: CompanionSession
+      - package: Companion
+        product: CompanionUI
+      - package: Companion
+        product: CompanionCore
+      - package: Companion
+        product: CompanionLLM
+      - package: Companion
+        product: CompanionBridge
+      - package: Companion
+        product: CompanionCapture
+      - package: Companion
+        product: CompanionPageFinder
+    info:
+      path: App/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: Companion
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+    entitlements:
+      path: App/Companion.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.Companion
+        SWIFT_VERSION: "6.0"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: NO
