@@ -8,4 +8,13 @@ import AppKit
         self.environment = environment
         environment.launch()
     }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let environment else { return .terminateNow }
+        Task {
+            await environment.shutdown()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
 }
