@@ -12,7 +12,11 @@ import AppKit
            command == .toggleHint || command == .newChat {
             return viewModel.handle(command)
         }
-        guard let action = editAction(event), let responder else { return false }
+        return performEdit(event, in: window)
+    }
+
+    static func performEdit(_ event: NSEvent, in window: NSWindow) -> Bool {
+        guard let action = editAction(event), let responder = window.firstResponder else { return false }
         return responder.tryToPerform(action, with: nil)
     }
 
