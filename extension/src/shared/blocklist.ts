@@ -14,5 +14,8 @@ export function hostOf(url: string): string | null {
 
 export function isHostBlocked(host: string, domains: readonly string[]): boolean {
   const h = normalize(host);
-  return domains.some((d) => h === d || h.endsWith("." + d));
+  return domains.some((raw) => {
+    const d = normalize(raw);
+    return h === d || h.endsWith("." + d);
+  });
 }

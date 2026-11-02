@@ -58,3 +58,9 @@ describe("blocklist", () => {
     expect(await s.domains()).toEqual(["new.org"]);
   });
 });
+
+describe("isHostBlocked with a hand-edited list", () => {
+  it("matches domains regardless of case or trailing dot", () => {
+    expect(isHostBlocked("secure.chase.com", ["Chase.COM."])).toBe(true);
+  });
+});
