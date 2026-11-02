@@ -1,1 +1,32 @@
-<!doctype html><title>placeholder</title>
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="katex.min.css">
+<style>
+  html, body { background: transparent; margin: 0; }
+  body { font: 13px/1.45 -apple-system, system-ui, sans-serif; color: #ECECF0; overflow-x: hidden; }
+  #thread { display: flow-root; }
+  .msg + .msg { margin-top: 8px; }
+  .q { color: #A1A1A6; }
+  .reading { font-family: Georgia, serif; color: #A1A1A6; border-left: 2px solid #0A84FF; padding-left: 6px; margin: 0 0 6px; }
+  p { margin: 0 0 6px; }
+  .msg > :last-child, .q > :last-child { margin-bottom: 0; }
+  ul, ol { margin: 0 0 6px; padding-left: 20px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: rgba(255, 255, 255, .08); border-radius: 3px; padding: 0 3px; }
+  pre { overflow-x: auto; white-space: pre; background: rgba(255, 255, 255, .08); border-radius: 6px; padding: 6px 8px; margin: 0 0 6px; }
+  pre code { background: transparent; padding: 0; }
+  a { color: #0A84FF; }
+  .katex-display { overflow-x: auto; overflow-y: hidden; margin: 6px 0; padding: 2px 0; }
+  .typing { height: 18px; display: flex; align-items: center; gap: 4px; }
+  .typing span { width: 5px; height: 5px; border-radius: 50%; background: #8E8E93; animation: typing 1s infinite ease-in-out; }
+  .typing span:nth-child(2) { animation-delay: .15s; }
+  .typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes typing { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
+</style>
+</head>
+<body>
+<div id="thread"></div>
+<script src="renderer.js"></script>
+</body>
+</html>
