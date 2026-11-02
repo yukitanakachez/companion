@@ -7,6 +7,7 @@ struct CompanionApp: App {
     var body: some Scene {
         MenuBarExtra("Companion", systemImage: "sparkle") {
             Button("Ask…  ⌥Space") { delegate.environment?.coordinator.summon() }
+            Button("Capture Region…  ⌥⇧Space") { delegate.environment?.coordinator.summonRegion() }
             Button("Settings…") { delegate.environment?.settingsWindow.show() }
             Button("Latency Report") { showLatencyReport() }
             Divider()

@@ -1,4 +1,5 @@
 import AppKit
+import CompanionCapture
 import CompanionCore
 @testable import CompanionSession
 import CompanionTestSupport
@@ -63,6 +64,59 @@ final class FakeProviders: ProviderResolving, @unchecked Sendable {
     }
 }
 
+actor FakeGatherer: ContextGathering {
+    private let emissions: [CapturedContext]
+    private let gap: Duration
+    private(set) var requests: [GatherRequest] = []
+
+    init(emissions: [CapturedContext], gap: Duration = .zero) {
+        self.emissions = emissions
+        self.gap = gap
+    }
+
+    func gather(_ request: GatherRequest) async -> AsyncStream<CapturedContext> {
+        requests.append(request)
+        let (emissions, gap) = (emissions, gap)
+        return AsyncStream { continuation in
+            let task = Task {
+                for (index, emission) in emissions.enumerated() {
+                    if index > 0, gap > .zero { try? await Task.sleep(for: gap) }
+                    continuation.yield(emission)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+@MainActor final class FakeRegionSelector: RegionSelecting {
+    private(set) var selectCount = 0
+    private var pending: CheckedContinuation<RegionSelection?, Never>?
+
+    func select() async -> RegionSelection? {
+        selectCount += 1
+        return await withCheckedContinuation { pending = $0 }
+    }
+
+    func finish(_ selection: RegionSelection?) {
+        pending?.resume(returning: selection)
+        pending = nil
+    }
+}
+
+@MainActor final class FakeGlow: GlowFlashing {
+    private(set) var flashed: [CGRect] = []
+    func flash(_ rect: CGRect) { flashed.append(rect) }
+}
+
+func ctx(kind: ContextKind = .genericWindow, frame: CGRect? = CGRect(x: 100, y: 100, width: 800, height: 600),
+         items: [ContextItem] = [], complete: Bool, privacy: PrivacyDecision = .allowed,
+         bundleID: String = "com.apple.Notes") -> CapturedContext {
+    CapturedContext(front: FrontAppInfo(bundleID: bundleID, appName: "App", pid: 1, windowTitle: "Window", windowFrame: frame),
+                    privacy: privacy, kind: kind, items: items, isComplete: complete)
+}
+
 @MainActor final class Harness {
     let vm = BubbleViewModel()
     let presenter = FakePresenter()
@@ -76,13 +130,22 @@ final class FakeProviders: ProviderResolving, @unchecked Sendable {
 
     var provider: FakeLLMProvider { providers.fallback }
 
-    init(providers: FakeProviders = FakeProviders(), permissions: FakePermissions = FakePermissions()) {
+    let gatherer: FakeGatherer
+    let selector = FakeRegionSelector()
+    let glow = FakeGlow()
+
+    init(providers: FakeProviders = FakeProviders(), permissions: FakePermissions = FakePermissions(),
+         gatherer: FakeGatherer = FakeGatherer(emissions: [])) {
         self.providers = providers
         self.permissions = permissions
+        self.gatherer = gatherer
         coordinator = SummonCoordinator(viewModel: vm, presenter: presenter, providers: providers,
                                         settings: settings, permissions: permissions, trace: trace,
                                         now: clock.read, cursor: { NSPoint(x: 500, y: 400) },
                                         openSettings: { [unowned self] in openSettingsCount += 1 })
+        coordinator.gatherer = gatherer
+        coordinator.regionSelector = selector
+        coordinator.glow = glow
     }
 
     func submit(_ question: String) async {

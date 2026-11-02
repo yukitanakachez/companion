@@ -1,4 +1,5 @@
 import AppKit
+import CompanionCapture
 import CompanionCore
 import CompanionLLM
 import CompanionUI
@@ -50,6 +51,17 @@ import Foundation
     private var prewarmTasks: [Task<Void, Never>] = []
     private var workTask: Task<Void, Never>?
 
+    var gatherer: (any ContextGathering)?
+    var regionSelector: any RegionSelecting = LiveRegionSelector()
+    var glow: any GlowFlashing = LiveCaptureGlow()
+    private var gatherTask: Task<Void, Never>?
+    private var regionTask: Task<Void, Never>?
+    private var activeGather: UUID?
+    private var regionSelectionInProgress = false
+    private var glowDone = false
+    private var removedItemIDs: Set<UUID> = []
+    private var removedPieces: Set<PieceCase> = []
+
     init(viewModel: BubbleViewModel, presenter: any BubblePresenting, providers: any ProviderResolving,
          settings: any SettingsStoring, permissions: any PermissionChecking, trace: LatencyTrace,
          now: @escaping @Sendable () -> Date = Date.init,
@@ -75,18 +87,106 @@ import Foundation
 
     // MARK: Summon
 
+    public func attach(gatherer: ContextGatherer) {
+        self.gatherer = gatherer
+    }
+
     public func summon() {
+        guard !regionSelectionInProgress else { return }
         if presenter.isVisible {
             presenter.focusInput()
             return
         }
         beginPresentation(avoiding: nil)
         startStartupChecks()
+        startGather(.frontWindow, glowAlreadyShown: false)
+    }
+
+    public func summonRegion() {
+        guard !regionSelectionInProgress else { return }
+        regionSelectionInProgress = true
+        regionTask = Task {
+            let selection = await regionSelector.select()
+            regionSelectionInProgress = false
+            guard let selection else { return }
+            if presenter.isVisible {
+                presenter.focusInput()
+            } else {
+                beginPresentation(avoiding: selection.rect)   // the trace starts now: the drag is not hotkey latency
+                startStartupChecks()
+            }
+            glow.flash(selection.rect)
+            startGather(.region(selection), glowAlreadyShown: true)
+        }
+    }
+
+    private func startGather(_ request: GatherRequest, glowAlreadyShown: Bool) {
+        cancelGather()
+        removedItemIDs = []
+        removedPieces = []
+        guard let gatherer else { return }
+        glowDone = glowAlreadyShown
+        let id = UUID()
+        activeGather = id
+        gatherTask = Task {
+            let stream = await gatherer.gather(request)
+            for await emission in stream {
+                guard activeGather == id else { return }
+                receiveGathered(emission)
+            }
+            if activeGather == id { activeGather = nil }
+        }
+    }
+
+    private func cancelGather() {
+        gatherTask?.cancel()
+        activeGather = nil
+    }
+
+    private func receiveGathered(_ emission: CapturedContext) {
+        var incoming = emission
+        incoming.items.removeAll { item in
+            removedItemIDs.contains(item.id) || PieceCase(item.piece).map(removedPieces.contains) == true
+        }
+        // Pages the finder attached outlive a gather that finishes after them.
+        if let pages = context?.items.first(where: { PieceCase($0.piece) == .pdfPages }) {
+            incoming.items.append(pages)
+            incoming.kind = .pdfPages
+        }
+        applyContext(incoming)
+        trace.mark(.contextFirst)
+        if incoming.isComplete { trace.mark(.contextComplete) }
+        if !glowDone, let frame = incoming.front?.windowFrame, !isBlocked(incoming.privacy) {
+            glowDone = true
+            glow.flash(frame)
+        }
+        guard run == nil else { return }
+        let model = chosenModel()
+        viewModel.setModelName(model.displayName)
+        if prewarmedProviders.insert(model.providerID).inserted {
+            Task {
+                if case .success(let provider) = await resolveOffMain(model) { prewarm(provider) }
+            }
+        }
+    }
+
+    private func isBlocked(_ privacy: PrivacyDecision) -> Bool {
+        if case .blocked = privacy { return true }
+        return false
+    }
+
+    /// Up to 500 ms, then the question goes ahead with whatever has landed (spec §7).
+    private func waitForGather(id: UUID) async {
+        let deadline = ContinuousClock.now + .milliseconds(500)
+        while activeGather != nil, isCurrent(id), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     /// Cancels in-flight work and keeps partial answers (quit).
     public func cancelAll() {
         cancelRun(keepPartial: true)
+        cancelGather()
         startupTask?.cancel()
     }
 
@@ -192,6 +292,8 @@ import Foundation
     }
 
     private func perform(id: UUID) async {
+        await waitForGather(id: id)
+        guard isCurrent(id) else { return }
         await streamAnswer(id: id, model: chosenModel())
     }
 
@@ -286,12 +388,17 @@ import Foundation
 
     public func bubbleDidClose() {
         cancelRun(keepPartial: true)
+        cancelGather()
         startupTask?.cancel()
         presenter.hide()
         conversation.touch()
     }
 
     public func bubbleDidRemoveContextItem(_ id: UUID) {
+        removedItemIDs.insert(id)
+        if let piece = context?.items.first(where: { $0.id == id })?.piece, let kind = PieceCase(piece) {
+            removedPieces.insert(kind)
+        }
         applyContext(context?.removingItem(id))
     }
 
@@ -307,6 +414,7 @@ import Foundation
 
     public func bubbleDidRequestNewChat() {
         cancelRun(keepPartial: false)
+        cancelGather()
         conversation.reset()
         viewModel.resetThread([])
         clearTransientUI()
@@ -362,10 +470,32 @@ import Foundation
     /// Test hook: awaits every in-flight task.
     func settle() async {
         for _ in 0..<2 {
+            await regionTask?.value
+            await gatherTask?.value
             await startupTask?.value
             await workTask?.value
             for task in prewarmTasks { await task.value }
             prewarmTasks = []
+        }
+    }
+}
+
+/// The removable piece kinds, so a removed chip stays removed across later emissions of a gather.
+private enum PieceCase: Hashable {
+    case windowImage, regionImage, youtubeVideo, transcriptWindow, webPage, math, pdfPages, selectedText, focusedText
+
+    init?(_ piece: ContextPiece) {
+        switch piece {
+        case .windowImage: self = .windowImage
+        case .regionImage: self = .regionImage
+        case .youtubeVideo: self = .youtubeVideo
+        case .transcriptWindow: self = .transcriptWindow
+        case .webPage: self = .webPage
+        case .math: self = .math
+        case .pdfPages: self = .pdfPages
+        case .selectedText: self = .selectedText
+        case .focusedText: self = .focusedText
+        case .notice: return nil
         }
     }
 }

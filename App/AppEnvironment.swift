@@ -1,10 +1,17 @@
 import AppKit
+import CompanionCapture
 import CompanionCore
 import CompanionLLM
 import CompanionSession
 import CompanionUI
 
 /// Composition root: builds the objects and wires callbacks. Behaviour lives in CompanionSession.
+private struct NoBrowserContext: BrowserContextProviding {
+    func cachedActiveTabContext() async -> TabContext? { nil }
+    func requestActiveTabContext(timeout: Duration) async -> TabContext? { nil }
+    func isConnected() async -> Bool { false }
+}
+
 @MainActor final class AppEnvironment {
     let coordinator: SummonCoordinator
     let trace: LatencyTrace
@@ -36,6 +43,8 @@ import CompanionUI
                                             settings: settings, permissions: permissions, trace: trace,
                                             openSettings: { settingsWindow.show() })
         viewModel.actions = coordinator
+        coordinator.attach(gatherer: ContextGatherer.live(browser: NoBrowserContext(), blocklist: { mirror.blocklist },
+                                                          ownBundleID: "dev.local.Companion"))
 
         self.secrets = secrets
         self.settings = settings
@@ -47,7 +56,7 @@ import CompanionUI
         self.settingsWindow = settingsWindow
         self.coordinator = coordinator
         orb = OrbController(settings: settings, onSummon: { coordinator.summon() })
-        hotkeys = HotkeyManager(onSummon: { coordinator.summon() }, onRegion: {})
+        hotkeys = HotkeyManager(onSummon: { coordinator.summon() }, onRegion: { coordinator.summonRegion() })
     }
 
     func launch() {
