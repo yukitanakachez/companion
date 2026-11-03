@@ -2,6 +2,8 @@ import CompanionCore
 import Foundation
 
 public actor PageFinder {
+    private static let maxDocumentsPerSearch = 4
+
     private let fetcher: any DocumentFetching
     private let viewer: any ViewerDriving
     private let cache: PDFSessionCache
@@ -23,6 +25,8 @@ public actor PageFinder {
     public func find(_ reference: PageReference, question: String, tab: TabContext?,
                      lastUsed: DriveFileRef?, preferred: DriveFileRef?,
                      progress: @escaping @Sendable (PageFinderStep) -> Void) async -> PageFinderOutcome {
+        let candidates = DocumentResolver.searchCandidates(tab: tab, question: question, preferred: preferred)
+        if !candidates.isEmpty { return await search(reference, in: candidates, progress: progress) }
         guard let choice = DocumentResolver.resolve(tab: tab, question: question, lastUsed: lastUsed, preferred: preferred)
         else { return .noDocument }
         let title = choice.current.title
@@ -34,12 +38,47 @@ public actor PageFinder {
             if error.code == .downloadBlocked, let tab, tab.drive?.file.fileId == choice.current.fileId {
                 return await scanViewer(reference, tabId: tab.tabId, choice: choice, progress: progress)
             }
-            return .failed(message: Self.failureMessage(error, title: title))
-        } catch PageFinderError.notAPDF {
-            return .failed(message: Self.failureMessage(BridgeError(code: .notPdf, message: ""), title: title))
+            return Self.failure(error, title: title)
         } catch {
-            return .failed(message: Self.failureMessage(BridgeError(code: .internal, message: ""), title: title))
+            return Self.failure(error, title: title)
         }
+    }
+
+    /// Tries `documents` in order until one holds every requested page. Failing to get one document doesn't end the
+    /// search. Otherwise: the most pages matched (ties to the earlier), then the first document that lacked them,
+    /// then the first failure.
+    private func search(_ reference: PageReference, in documents: [DriveFileRef],
+                        progress: @Sendable (PageFinderStep) -> Void) async -> PageFinderOutcome {
+        var best: (outcome: PageFinderOutcome, matched: Int)?
+        var firstNotFound: PageFinderOutcome?
+        var firstFailure: PageFinderOutcome?
+        for file in documents.prefix(Self.maxDocumentsPerSearch) {
+            let choice = DocumentChoice(current: file, alternatives: documents.filter { $0.fileId != file.fileId })
+            do {
+                let loaded = try await load(file, progress: progress)
+                let outcome = pages(reference, from: loaded, choice: choice, progress: progress)
+                if case .found(_, _, let missing) = outcome {
+                    if missing.isEmpty { return outcome }
+                    let matched = reference.pages.count - missing.count
+                    if matched > (best?.matched ?? 0) { best = (outcome, matched) }
+                } else if firstNotFound == nil {
+                    firstNotFound = outcome
+                }
+            } catch {
+                if firstFailure == nil { firstFailure = Self.failure(error, title: file.title) }
+            }
+            if Task.isCancelled { break }
+        }
+        return best?.outcome ?? firstNotFound ?? firstFailure ?? .noDocument
+    }
+
+    private static func failure(_ error: any Error, title: String) -> PageFinderOutcome {
+        let bridgeError = switch error {
+        case let error as BridgeError: error
+        case PageFinderError.notAPDF: BridgeError(code: .notPdf, message: "")
+        default: BridgeError(code: .internal, message: "")
+        }
+        return .failed(message: failureMessage(bridgeError, title: title))
     }
 
     static func failureMessage(_ error: BridgeError, title: String) -> String {

@@ -25,6 +25,15 @@ enum DocumentResolver {
         return lastUsed.map { DocumentChoice(current: $0, alternatives: []) }
     }
 
+    /// The attachments to try in order when nothing says which one the question means: several PDFs, no title
+    /// match, and no preferred document or open Drive viewer. Empty when the choice from `resolve` is explicit.
+    static func searchCandidates(tab: TabContext?, question: String, preferred: DriveFileRef?) -> [DriveFileRef] {
+        guard preferred == nil, tab?.drive == nil else { return [] }
+        let attachments = (tab?.classroom?.attachments ?? []).filter(isPDF)
+        guard attachments.count > 1, bestMatch(in: attachments, question: question) == nil else { return [] }
+        return attachments
+    }
+
     /// The attachment sharing the most words with the question; ties go to the earlier attachment.
     private static func bestMatch(in attachments: [DriveFileRef], question: String) -> DriveFileRef? {
         let questionWords = words(in: question)
