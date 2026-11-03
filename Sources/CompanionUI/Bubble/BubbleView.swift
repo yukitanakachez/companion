@@ -41,6 +41,7 @@ struct BubbleView: View {
                 content(answerIdeal: nil, live: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
+        .background { if style == .bubble { BubbleDragAreaView() } }
         .background(BubbleBackground(cornerRadius: style == .bubble ? BubbleMetrics.cornerRadius : 0))
         .clipShape(RoundedRectangle(cornerRadius: style == .bubble ? BubbleMetrics.cornerRadius : 0))
         .environment(\.colorScheme, .dark)
@@ -127,6 +128,7 @@ struct BubbleView: View {
                 .font(.system(size: 12))
             }
         }
+        .allowsHitTesting(false)   // no controls here: a press falls through to the drag area
     }
 
     private func pageThumbnails(live: Bool) -> some View {
@@ -206,6 +208,7 @@ struct BubbleView: View {
         .font(.system(size: 10.5))
         .foregroundStyle(Theme.footer)
         .lineLimit(1)
+        .allowsHitTesting(false)   // no controls here: a press falls through to the drag area
     }
 }
 
@@ -277,6 +280,11 @@ private struct ThumbnailImage: View {
     }
 }
 
+private struct BubbleDragAreaView: NSViewRepresentable {
+    func makeNSView(context: Context) -> BubbleDragArea { BubbleDragArea() }
+    func updateNSView(_ nsView: BubbleDragArea, context: Context) {}
+}
+
 /// Measures the view at its ideal height, without the bubble's 520 cap, and reports it.
 private struct HeightReporter<Content: View>: View {
     let natural: Content
@@ -292,6 +300,7 @@ private struct HeightReporter<Content: View>: View {
             .onPreferenceChange(BubbleHeightKey.self) { height in
                 MainActor.assumeIsolated { report(height) }
             }
+            .allowsHitTesting(false)
     }
 }
 

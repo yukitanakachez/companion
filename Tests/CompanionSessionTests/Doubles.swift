@@ -68,7 +68,7 @@ final class FakeProviders: ProviderResolving, @unchecked Sendable {
 }
 
 actor FakeGatherer: ContextGathering {
-    private let emissions: [CapturedContext]
+    private var emissions: [CapturedContext]
     private let gap: Duration
     private(set) var requests: [GatherRequest] = []
 
@@ -76,6 +76,9 @@ actor FakeGatherer: ContextGathering {
         self.emissions = emissions
         self.gap = gap
     }
+
+    /// What the next gather sees: the user moved somewhere else.
+    func setEmissions(_ emissions: [CapturedContext]) { self.emissions = emissions }
 
     func gather(_ request: GatherRequest) async -> AsyncStream<CapturedContext> {
         requests.append(request)

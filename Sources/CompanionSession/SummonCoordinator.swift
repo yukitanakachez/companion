@@ -6,7 +6,8 @@ import CompanionUI
 import Foundation
 
 /// Drives the bubble from hotkey to streamed answer. Everything that must feel instant happens
-/// synchronously here; keychain reads, prewarm, permission checks and gathering run after `show`.
+/// synchronously here; keychain reads, prewarm and permission checks run after `show`. The screen
+/// is read when a question is sent, not when the bubble opens: people open it, then move tabs.
 @MainActor public final class SummonCoordinator: BubbleActions {
     private enum SettingsTarget {
         case app
@@ -57,6 +58,8 @@ import Foundation
     var lastUsedDocument: DriveFileRef?
     var lastPageQuestion: String?
 
+    /// A capture that lands on this app, or on no app, says nothing about what the user is looking at.
+    var ownBundleID = Bundle.main.bundleIdentifier ?? "dev.local.Companion"
     var gatherer: (any ContextGathering)?
     var regionSelector: any RegionSelecting = LiveRegionSelector()
     var glow: any GlowFlashing = LiveCaptureGlow()
@@ -67,6 +70,8 @@ import Foundation
     private var glowDone = false
     private var removedItemIDs: Set<UUID> = []
     private var removedPieces: Set<PieceCase> = []
+    /// A selected region stands in for capture-on-send until its chip is removed or the bubble closes.
+    private var regionPinned = false
 
     init(viewModel: BubbleViewModel, presenter: any BubblePresenting, providers: any ProviderResolving,
          settings: any SettingsStoring, permissions: any PermissionChecking, trace: LatencyTrace,
@@ -105,7 +110,6 @@ import Foundation
         }
         beginPresentation(avoiding: nil)
         startStartupChecks()
-        startGather(.frontWindow, glowAlreadyShown: false)
     }
 
     public func summonRegion() {
@@ -121,6 +125,8 @@ import Foundation
                 beginPresentation(avoiding: selection.rect)   // the trace starts now: the drag is not hotkey latency
                 startStartupChecks()
             }
+            regionPinned = true
+            removedPieces.remove(.regionImage)   // picking a region again is asking for one
             glow.flash(selection.rect)
             startGather(.region(selection), glowAlreadyShown: true)
         }
@@ -128,8 +134,6 @@ import Foundation
 
     private func startGather(_ request: GatherRequest, glowAlreadyShown: Bool) {
         cancelGather()
-        removedItemIDs = []
-        removedPieces = []
         guard let gatherer else { return }
         glowDone = glowAlreadyShown
         let id = UUID()
@@ -138,7 +142,7 @@ import Foundation
             let stream = await gatherer.gather(request)
             for await emission in stream {
                 guard activeGather == id else { return }
-                receiveGathered(emission)
+                receiveGathered(emission, request: request)
             }
             if activeGather == id { activeGather = nil }
         }
@@ -149,13 +153,18 @@ import Foundation
         activeGather = nil
     }
 
-    private func receiveGathered(_ emission: CapturedContext) {
+    private func receiveGathered(_ emission: CapturedContext, request: GatherRequest) {
+        if case .frontWindow = request, emission.front == nil || emission.front?.bundleID == ownBundleID { return }
         var incoming = emission
         incoming.items.removeAll { item in
             removedItemIDs.contains(item.id) || PieceCase(item.piece).map(removedPieces.contains) == true
         }
         // Pages the finder attached outlive a gather that finishes after them.
-        if let pages = context?.items.first(where: { PieceCase($0.piece) == .pdfPages }) {
+        // A blocked app or site sends only its notice, so they don't outlive that.
+        if isBlocked(incoming.privacy) {
+            viewModel.setPageThumbnails([])
+            viewModel.setDocumentChoice(nil)
+        } else if let pages = context?.items.first(where: { PieceCase($0.piece) == .pdfPages }) {
             incoming.items.append(pages)
             incoming.kind = .pdfPages
         }
@@ -182,6 +191,7 @@ import Foundation
     }
 
     /// Up to 500 ms, then the question goes ahead with whatever has landed (spec §7).
+    /// `activeGather` is only ever set by a capture for this question or by a region just selected.
     private func waitForGather(id: UUID) async {
         let deadline = ContinuousClock.now + .milliseconds(500)
         while activeGather != nil, isCurrent(id), ContinuousClock.now < deadline {
@@ -211,11 +221,18 @@ import Foundation
         override = nil
         prewarmedProviders = []
         applyContext(nil)
+        forgetCaptureChoices()
         viewModel.setModelName(routed(.genericWindow).displayName)
 
         presenter.show(cursor: cursor(), avoiding: avoiding)
         trace.mark(.panelVisible)
         Task { @MainActor [trace] in trace.mark(.inputReady) }   // next turn ≈ "panel accepts keys"
+    }
+
+    private func forgetCaptureChoices() {
+        removedItemIDs = []
+        removedPieces = []
+        regionPinned = false
     }
 
     private func clearTransientUI() {
@@ -283,7 +300,7 @@ import Foundation
         viewModel.showError(nil)
         failed = nil
         viewModel.appendUserMessage(question)
-        startRun(question: question)
+        startRun(question: question, capture: !regionPinned)
     }
 
     /// The view model clears its input right after `bubbleDidSubmit` returns; a refused question goes back.
@@ -296,20 +313,28 @@ import Foundation
         case run(preferred: DriveFileRef?)
     }
 
-    private func startRun(question: String, finder: FinderUse = .run(preferred: nil)) {
+    /// `capture` reads the screen now, at Enter. Retries and document switches reuse what was read.
+    private func startRun(question: String, finder: FinderUse = .run(preferred: nil), capture: Bool = false) {
         viewModel.setBusy(true)
+        if capture { startGather(.frontWindow, glowAlreadyShown: false) }
         var active = ActiveRun(question: question)
-        let thinking = StepItem(text: "Thinking…", state: .active)
-        active.thinkingStepID = thinking.id
-        viewModel.setSteps([thinking])
+        let step = StepItem(text: activeGather == nil ? "Thinking…" : "Reading screen…", state: .active)
+        active.thinkingStepID = step.id
+        viewModel.setSteps([step])
         run = active
         let id = active.id
-        workTask = Task { await perform(id: id, question: question, finder: finder) }
+        workTask = Task { await perform(id: id, question: question, finder: finder, capture: capture) }
     }
 
-    private func perform(id: UUID, question: String, finder: FinderUse) async {
+    private func perform(id: UUID, question: String, finder: FinderUse, capture: Bool) async {
         await waitForGather(id: id)
         guard isCurrent(id) else { return }
+        if capture, !regionPinned { cancelGather() }   // chips show what was used: a later piece wouldn't be sent
+        viewModel.setSteps(viewModel.steps.map { step in
+            var step = step
+            if step.id == run?.thinkingStepID { step.text = "Thinking…" }
+            return step
+        })
         if case .run(let preferred) = finder, await runPageFlow(id: id, question: question, preferred: preferred) { return }
         guard isCurrent(id) else { return }
         await streamAnswer(id: id, model: chosenModel())
@@ -431,6 +456,7 @@ import Foundation
         if let piece = context?.items.first(where: { $0.id == id })?.piece, let kind = PieceCase(piece) {
             removedPieces.insert(kind)
             if kind == .pdfPages { viewModel.setPageThumbnails([]) }
+            if kind == .regionImage { regionPinned = false }
         }
         applyContext(context?.removingItem(id))
     }
@@ -452,6 +478,13 @@ import Foundation
         viewModel.resetThread([])
         clearTransientUI()
         viewModel.setBusy(false)
+        let keepRegion = regionPinned
+        forgetCaptureChoices()
+        regionPinned = keepRegion
+        var kept = keepRegion ? context : nil
+        kept?.items.removeAll { PieceCase($0.piece) == .pdfPages }   // the last chat's pages aren't this one's
+        applyContext(kept)
+        viewModel.setModelName(chosenModel().displayName)
     }
 
     public func bubbleDidRequestSettings() {

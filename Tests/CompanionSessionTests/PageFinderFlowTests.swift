@@ -39,6 +39,37 @@ private let found = PageFinderOutcome.found(choice: DocumentChoice(current: text
         #expect(h.provider.requests.last?.model == ModelCatalog.sonnet55 && h.coordinator.lastUsedDocument == textbook)
     }
 
+    /// The owner opens the bubble, then moves to the assignment tab, then presses Enter.
+    @Test func theFinderGetsTheTabMovedToAfterOpening() async {
+        var before = ctx(complete: true, bundleID: "company.thebrowser.dia")
+        before.tabId = 7
+        var after = before
+        after.tabId = classroomTab.tabId
+        let finder = FakePageFinder(outcome: found)
+        let browser = FakeBrowserContextProvider(cached: nil)
+        let gatherer = FakeGatherer(emissions: [before])
+        let h = Harness(gatherer: gatherer, pageFinder: finder, browser: browser)
+        h.coordinator.summon()
+        await h.coordinator.settle()
+        await browser.setCached(classroomTab)
+        await gatherer.setEmissions([after])
+        await h.submit("explain pages 231-232")
+        #expect(await finder.calls.last?.tab?.tabId == classroomTab.tabId)
+    }
+
+    @Test func pagesSurviveAFollowUpsCaptureButNotABlockedOne() async {
+        let gatherer = FakeGatherer(emissions: [ctx(complete: true)])
+        let h = Harness(gatherer: gatherer, pageFinder: FakePageFinder(outcome: found))
+        h.coordinator.summon()
+        await h.submit("explain pages 231-232")
+        await h.submit("and the second one?")
+        #expect(h.vm.context?.items.contains { if case .pdfPages = $0.piece { true } else { false } } == true)
+        await gatherer.setEmissions([ctx(items: [ContextItem(piece: .notice(.contextOffForApp))], complete: true, privacy: .blocked(reason: "app"))])
+        await h.submit("what now?")
+        #expect(h.vm.context?.items.count == 1)
+        #expect(h.vm.pageThumbnails.isEmpty && h.vm.documentChoice == nil)
+    }
+
     @Test func capNoteWhenMoreThanTenPagesAsked() async {
         let h = Harness(pageFinder: FakePageFinder(outcome: found))
         h.coordinator.summon()

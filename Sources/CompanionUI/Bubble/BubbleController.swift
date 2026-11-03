@@ -25,6 +25,9 @@ import SwiftUI
     private var popOutController: PopOutWindowController?
     private var lastContentHeight = BubbleMetrics.minHeight
     private var lastCursor: CGPoint = .zero
+    /// Where the bubble was last placed. A panel found anywhere else was dragged there.
+    private var placedOrigin: CGPoint = .zero
+    private var wasDragged = false
     private var restoreFocus: (() -> Void)?
     var focusHooks = BubbleFocusHooks.live
 
@@ -66,6 +69,8 @@ import SwiftUI
         let size = CGSize(width: BubbleMetrics.width, height: BubbleMetrics.clampedHeight(lastContentHeight))
         panel.setFrame(BubblePlacement.frame(cursor: cursor, size: size, screens: BubblePlacement.currentScreens(), avoid: avoiding),
                        display: false)
+        placedOrigin = panel.frame.origin
+        wasDragged = false
         panel.alphaValue = 1
         panel.orderFrontRegardless()
         panel.makeKey()
@@ -106,16 +111,25 @@ import SwiftUI
         controller.show(centeredIn: visibleFrame)
     }
 
-    /// Resizes the panel to its content, keeping the edge nearest the cursor fixed.
+    /// Resizes the panel to its content, keeping the edge nearest the cursor fixed, or, once the
+    /// user has dragged it, keeping it where they put it.
     func contentHeightDidChange(_ height: CGFloat) {
         lastContentHeight = height
         guard panel.isVisible else { return }
         let target = BubbleMetrics.clampedHeight(height)
         let screens = BubblePlacement.currentScreens()
-        guard let visible = (BubblePlacement.screen(for: lastCursor, in: screens) ?? screens.first)?.visibleFrame else { return }
-        let frame = BubblePlacement.resized(panel.frame, toHeight: target, anchorTop: panel.frame.maxY <= lastCursor.y, visibleFrame: visible)
+        if panel.frame.origin != placedOrigin { wasDragged = true }
+        let frame: CGRect
+        if wasDragged {
+            guard let visible = BubblePlacement.visibleFrame(containing: panel.frame, fallback: lastCursor, screens: screens) else { return }
+            frame = BubblePlacement.resizedAfterDrag(panel.frame, toHeight: target, visibleFrame: visible)
+        } else {
+            guard let visible = (BubblePlacement.screen(for: lastCursor, in: screens) ?? screens.first)?.visibleFrame else { return }
+            frame = BubblePlacement.resized(panel.frame, toHeight: target, anchorTop: panel.frame.maxY <= lastCursor.y, visibleFrame: visible)
+        }
         guard frame != panel.frame else { return }
         panel.setFrame(frame, display: true)
+        placedOrigin = panel.frame.origin
         panel.invalidateShadow()
     }
 

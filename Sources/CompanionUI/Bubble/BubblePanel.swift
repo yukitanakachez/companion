@@ -67,3 +67,11 @@ final class BubblePanel: NSPanel {
         viewModel.handle(.close)
     }
 }
+
+/// Sits behind the bubble's content, so a mouse-down reaches it only where nothing else wants one.
+/// `performDrag` moves the window without activating the app, and this view can't become first
+/// responder, so the input keeps its focus and the front app stays front.
+final class BubbleDragArea: NSView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+}
