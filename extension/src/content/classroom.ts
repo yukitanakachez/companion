@@ -20,10 +20,18 @@ function textLines(el: Element): string[] {
   return lines;
 }
 
+/** "Attachment: PDF: Book.pdf" → "Book.pdf". Only a known label goes, so "Chapter 3: Limits.pdf" stays intact. */
+function titleFromLabel(label: string): string {
+  const title = label.replace(/^Attachment:\s*/, "");
+  const colon = title.indexOf(": ");
+  return colon > 0 && TYPE_LABELS.has(title.slice(0, colon)) ? title.slice(colon + 2) : title;
+}
+
 function attachmentFrom(a: HTMLAnchorElement, fileId: string): DriveFileRef {
   const attr = a.getAttribute("aria-label")?.trim() || a.getAttribute("title")?.trim() || "";
   const lines = textLines(a);
-  const title = attr.replace(/^Attachment:\s*/, "") || lines.find((l) => !TYPE_LABELS.has(l)) || "";
+  const named = titleFromLabel(attr) || lines.find((l) => !TYPE_LABELS.has(l)) || "";
+  const title = named.replace(/\s+/g, " ");
   const isPdf = /\.pdf$/i.test(title) || lines.includes("PDF");
   return { fileId, title, mimeType: isPdf ? "application/pdf" : null };
 }
