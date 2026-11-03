@@ -28,6 +28,25 @@ describe("parsing", () => {
     const d = domFrom(`<!doctype html><a href="/file/d/1234567890ab/view"><img></a><a href="/file/d/1234567890ab/view" aria-label="Attachment: Book.PDF"></a>`, U).window.document;
     expect(parseAttachments(d)).toEqual([{ fileId: "1234567890ab", title: "Book.PDF", mimeType: "application/pdf" }]);
   });
+  it("real classwork page: one clean PDF title per file, folder links ignored", () => {
+    const d = domFrom("classroom/real-classwork.html", "https://classroom.google.com/w/MTIz/t/all").window.document;
+    expect(parseAttachments(d)).toEqual([
+      { fileId: "AAAAAAAAAAAAAAAA", title: "AP Calculus AB Chap 3B test a 2526 Name.pdf", mimeType: "application/pdf" },
+      { fileId: "BBBBBBBBBBBBBBBB", title: "Rogawski's Calculus Early Transcendentals for AP_.pdf", mimeType: "application/pdf" },
+      { fileId: "CCCCCCCCCCCCCCCC", title: "Stewart Precalculus 7th ed_.pdf", mimeType: "application/pdf" },
+    ]);
+  });
+  it("a colon in the title survives; only a known type label is stripped", () => {
+    const anchor = (label: string) => `<a href="/file/d/1234567890ab/view" aria-label="${label}"></a>`;
+    const title = (label: string) => parseAttachments(domFrom(`<!doctype html>${anchor(label)}`, U).window.document)[0].title;
+    expect(title("Attachment: Chapter 3: Limits.pdf")).toBe("Chapter 3: Limits.pdf");
+    expect(title("Attachment: PDF: Chapter 3: Limits.pdf")).toBe("Chapter 3: Limits.pdf");
+    expect(title("Attachment: PDF: PDF: odd.pdf")).toBe("PDF: odd.pdf");
+  });
+  it("whitespace runs collapse in a title read from the card text", () => {
+    const d = domFrom(`<!doctype html><a href="/file/d/1234567890ab/view"><div>Chapter   5.pdf</div></a>`, U).window.document;
+    expect(parseAttachments(d)[0].title).toBe("Chapter 5.pdf");
+  });
   it("driveFileIdFromUrl", () => {
     expect(driveFileIdFromUrl("https://drive.google.com/file/d/1AbC_d-EfGhIj/view")).toBe("1AbC_d-EfGhIj");
     expect(driveFileIdFromUrl("https://drive.google.com/file/d/short/view")).toBeNull();
